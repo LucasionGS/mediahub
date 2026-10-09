@@ -22,6 +22,9 @@ POLKIT_RULE="/etc/polkit-1/rules.d/50-mediahub.rules"
 GREETD_CONF="/etc/greetd/config.toml"
 NVM_VERSION="v0.40.3"
 OTHER_DISPLAY_MANAGERS=(gdm sddm lightdm lxdm ly)
+GAMESCOPE_VERSION="3.16.31" # Built from source where the distro doesn't package gamescope (Ubuntu 24.04)
+GAMESCOPE_DIR="/opt/gamescope"
+GAMESCOPE_BUILD_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/mediahub/gamescope-build"
 
 ASSUME_YES="no"
 CHANGES=()
@@ -105,6 +108,31 @@ detect_platform() {
     aarch64 | arm64) echo "linux_arm64" ;;
     *) echo "unknown" ;;
   esac
+}
+
+# Print the vendors of the GPUs in this machine (intel, amd, nvidia), one per line
+detect_gpu_vendors() {
+  local VENDOR
+  for VENDOR in /sys/class/drm/card*/device/vendor; do
+    [[ -r "$VENDOR" ]] || continue
+    case "$(cat "$VENDOR")" in
+      0x8086) echo "intel" ;;
+      0x1002) echo "amd" ;;
+      0x10de) echo "nvidia" ;;
+    esac
+  done | sort -u
+}
+
+# Print the Arch Vulkan driver packages gamescope needs for this machine's GPUs. Arch's gamescope doesn't pull one in.
+arch_vulkan_drivers() {
+  local VENDOR
+  for VENDOR in $(detect_gpu_vendors); do
+    case "$VENDOR" in
+      intel) echo "vulkan-intel" ;;
+      amd) echo "vulkan-radeon" ;;
+      nvidia) [[ -d /sys/module/nvidia ]] || echo "vulkan-nouveau" ;; # The proprietary driver brings its own (nvidia-utils)
+    esac
+  done
 }
 
 # Whether systemd is running as init (it isn't inside most containers)
@@ -201,9 +229,16 @@ apt_has_candidate() {
   apt-cache policy "$1" 2> /dev/null | grep -q "Candidate: [0-9]"
 }
 
-# Make gamescope installable: it's in backports/contrib on Debian 13 and in universe on Ubuntu
+# Make gamescope installable: it's in backports/contrib on Debian 13 and in universe on Ubuntu 25.10+.
+# Releases that don't package it (Ubuntu 24.04) build it from source instead, which sets GAMESCOPE_FROM_SOURCE.
 setup_deps_debian_gamescope() {
+  GAMESCOPE_FROM_SOURCE="no"
   apt_has_candidate gamescope && return
+  # Built from source on an earlier run
+  if [[ -n "$(gamescope_source_version)" ]]; then
+    GAMESCOPE_FROM_SOURCE="yes"
+    return
+  fi
   local ID CODENAME
   # shellcheck source=/dev/null
   ID="$(. /etc/os-release && echo "$ID")"
@@ -211,8 +246,10 @@ setup_deps_debian_gamescope() {
   CODENAME="$(. /etc/os-release && echo "$VERSION_CODENAME")"
 
   if [[ "$ID" == "ubuntu" ]]; then
-    confirm "gamescope is in Ubuntu's universe repository. Enable universe?" || fail "gamescope is required. Enable universe and run setup.sh again."
-    sudo apt-get install -y software-properties-common > /dev/null && sudo add-apt-repository -y universe > /dev/null
+    if ! apt-cache policy | grep -q "c=universe"; then
+      confirm "gamescope is in Ubuntu's universe repository. Enable universe?" || fail "gamescope is required. Enable universe and run setup.sh again."
+      sudo apt-get install -y software-properties-common > /dev/null && sudo add-apt-repository -y universe > /dev/null
+    fi
   else
     local KEYRING="/usr/share/keyrings/debian-archive-keyring.pgp"
     [[ -f "$KEYRING" ]] || KEYRING="/usr/share/keyrings/debian-archive-keyring.gpg"
@@ -228,7 +265,101 @@ EOF
     changed "Enabled $CODENAME-backports (main, contrib) for gamescope"
   fi
   sudo apt-get update || fail "apt-get update failed."
-  apt_has_candidate gamescope || fail "gamescope still isn't available from apt. Debian 13 (trixie) or Ubuntu 24.04 or newer is needed."
+  apt_has_candidate gamescope && return
+
+  echo "    gamescope isn't packaged for this release (Ubuntu only packages it from 25.10)."
+  confirm "Build gamescope $GAMESCOPE_VERSION from source into $GAMESCOPE_DIR? This takes a few minutes." \
+    || fail "gamescope is required. Upgrade to Debian 13 or Ubuntu 25.10+, or let setup.sh build it from source."
+  GAMESCOPE_FROM_SOURCE="yes"
+}
+
+# Print the version of the gamescope built from source, or nothing when there isn't one
+gamescope_source_version() {
+  [[ -x "$GAMESCOPE_DIR/bin/gamescope" ]] || return 0
+  "$GAMESCOPE_DIR/bin/gamescope" --version 2>&1 | grep -oE "version [0-9.]+" | cut -d" " -f2
+}
+
+# Clone a meson project at a tag, then build and install it into GAMESCOPE_DIR. Extra arguments go to meson setup.
+gamescope_meson_build() {
+  local NAME="$1"
+  local URL="$2"
+  local TAG="$3"
+  shift 3
+  local SRC="$GAMESCOPE_BUILD_DIR/$NAME"
+  local LOG="$GAMESCOPE_BUILD_DIR/$NAME.log"
+  echo "    Building $NAME $TAG..."
+  rm -rf "$SRC"
+  if ! { git clone -q --depth 1 --branch "$TAG" --recurse-submodules --shallow-submodules "$URL" "$SRC" \
+    && meson setup "$SRC/build" "$SRC" --prefix="$GAMESCOPE_DIR" --libdir=lib --buildtype=release "$@" \
+    && ninja -C "$SRC/build" \
+    && sudo ninja -C "$SRC/build" install; } > "$LOG" 2>&1; then
+    tail -n 20 "$LOG" >&2
+    fail "Building $NAME $TAG failed. The full log is in $LOG."
+  fi
+}
+
+# Build gamescope from source into GAMESCOPE_DIR, and link its binaries and Vulkan layer into /usr/local.
+# Its bundled wlroots needs newer wayland, wayland-protocols, libdrm, xkbcommon and pixman than Ubuntu 24.04 has, so
+# those are built into GAMESCOPE_DIR too and found through the binaries' rpath. The system's copies stay untouched.
+setup_gamescope_build() {
+  local INSTALLED
+  INSTALLED="$(gamescope_source_version)"
+  if [[ "$INSTALLED" == "$GAMESCOPE_VERSION" ]]; then
+    echo "    gamescope $GAMESCOPE_VERSION is already built in $GAMESCOPE_DIR."
+    return
+  fi
+
+  step "Building gamescope $GAMESCOPE_VERSION from source"
+  local BUILD_DEPS=(meson ninja-build cmake pkg-config g++ glslang-tools bison hwdata xwayland
+    libffi-dev libexpat1-dev libxml2-dev libpciaccess-dev libudev-dev libinput-dev libseat-dev libcap-dev libgbm-dev
+    libegl-dev libgles-dev libvulkan-dev libsdl2-dev libavif-dev libdecor-0-dev libluajit-5.1-dev libeis-dev
+    libpipewire-0.3-dev libstb-dev libglm-dev libx11-dev libx11-xcb-dev libxdamage-dev libxcomposite-dev
+    libxcursor-dev libxrender-dev libxext-dev libxfixes-dev libxxf86vm-dev libxtst-dev libxres-dev libxmu-dev libxi-dev
+    libxcb-composite0-dev libxcb-icccm4-dev libxcb-res0-dev libxcb-xfixes0-dev libxcb-ewmh-dev libxcb-render0-dev
+    libxcb-xinput-dev libxcb-dri3-dev libxcb-present-dev libxcb-shm0-dev libxcb-xkb-dev)
+  echo "    Installing the build dependencies..."
+  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${BUILD_DEPS[@]}" > /dev/null \
+    || fail "apt-get failed to install gamescope's build dependencies."
+  # The bundled wlroots needs meson 1.3+, which Debian 12 doesn't have
+  local MESON
+  MESON="$(meson --version)"
+  if [[ "$(printf '%s\n' "1.3.0" "$MESON" | sort -V | head -n1)" != "1.3.0" ]]; then
+    fail "Building gamescope needs meson 1.3 or newer, but this system has $MESON. Upgrade to Ubuntu 24.04 or Debian 13."
+  fi
+
+  # Start clean, so files from an older version don't linger
+  sudo rm -rf "$GAMESCOPE_DIR"
+  mkdir -p "$GAMESCOPE_BUILD_DIR"
+  local LIB_DIR="$GAMESCOPE_DIR/lib"
+  local -x PKG_CONFIG_PATH="$LIB_DIR/pkgconfig:$GAMESCOPE_DIR/share/pkgconfig"
+  local -x PATH="$GAMESCOPE_DIR/bin:$PATH" # The newer wayland-scanner
+
+  gamescope_meson_build wayland https://gitlab.freedesktop.org/wayland/wayland.git 1.24.0 \
+    -Ddocumentation=false -Dtests=false -Ddtd_validation=false
+  gamescope_meson_build wayland-protocols https://gitlab.freedesktop.org/wayland/wayland-protocols.git 1.47 -Dtests=false
+  gamescope_meson_build libdrm https://gitlab.freedesktop.org/mesa/drm.git libdrm-2.4.129 \
+    -Dtests=false -Dman-pages=disabled -Dvalgrind=disabled -Dcairo-tests=disabled
+  gamescope_meson_build xkbcommon https://github.com/xkbcommon/libxkbcommon.git xkbcommon-1.8.0 \
+    -Denable-docs=false -Denable-tools=false -Denable-wayland=false -Denable-x11=true \
+    -Dxkb-config-root=/usr/share/X11/xkb -Dx-locale-root=/usr/share/X11/locale
+  gamescope_meson_build pixman https://gitlab.freedesktop.org/pixman/pixman.git pixman-0.46.4 \
+    -Dtests=disabled -Ddemos=disabled -Dgtk=disabled -Dlibpng=disabled
+  gamescope_meson_build gamescope https://github.com/ValveSoftware/gamescope.git "$GAMESCOPE_VERSION" \
+    -Dbenchmark=disabled -Denable_tests=false -Denable_openvr_support=false -Dpipewire=enabled \
+    --force-fallback-for=wlroots,libliftoff,libdisplay-info,vkroots \
+    "-Dc_link_args=-Wl,-rpath,$LIB_DIR" "-Dcpp_link_args=-Wl,-rpath,$LIB_DIR"
+
+  # gamescope starts gamescopereaper through PATH, and the Vulkan loader doesn't look in /opt for layers
+  local BIN
+  for BIN in "$GAMESCOPE_DIR"/bin/gamescope*; do
+    sudo ln -sfn "$BIN" /usr/local/bin/
+  done
+  sudo mkdir -p /usr/local/share/vulkan/implicit_layer.d
+  sudo ln -sfn "$GAMESCOPE_DIR"/share/vulkan/implicit_layer.d/*.json /usr/local/share/vulkan/implicit_layer.d/
+
+  [[ "$(gamescope_source_version)" == "$GAMESCOPE_VERSION" ]] || fail "gamescope was built but doesn't run. Check the logs in $GAMESCOPE_BUILD_DIR."
+  rm -rf "$GAMESCOPE_BUILD_DIR"
+  changed "Built gamescope $GAMESCOPE_VERSION from source into $GAMESCOPE_DIR"
 }
 
 # Install system packages
@@ -236,13 +367,19 @@ setup_deps_install() {
   step "Installing dependencies"
   if [[ "$OS" == "arch" ]]; then
     local PACKAGES=(gamescope greetd pipewire wireplumber pipewire-pulse git make curl go xorg-xprop libinput nss gtk3 alsa-lib noto-fonts)
+    local DRIVERS
+    mapfile -t DRIVERS < <(arch_vulkan_drivers)
+    PACKAGES+=("${DRIVERS[@]}")
+    [[ ${#DRIVERS[@]} -eq 0 && ! -d /sys/module/nvidia ]] && printf_red "    No GPU detected, so no Vulkan driver will be installed. gamescope needs one (vulkan-intel, vulkan-radeon or vulkan-nouveau)."
     echo "    Packages: ${PACKAGES[*]}"
     confirm "Install these with pacman?" || fail "Dependencies are required. Install them yourself and run setup.sh again."
     sudo pacman -S --needed --noconfirm "${PACKAGES[@]}" || fail "pacman failed to install the dependencies."
   else
     sudo apt-get update || fail "apt-get update failed."
     setup_deps_debian_gamescope
-    local PACKAGES=(gamescope greetd pipewire wireplumber pipewire-pulse git make golang-go x11-utils libinput-tools curl ca-certificates fonts-noto-core libnss3 libgbm1 dbus-user-session)
+    # mesa-vulkan-drivers is gamescope's Vulkan driver for Intel, AMD and nouveau. Nothing depends on it, so it's easy to miss.
+    local PACKAGES=(greetd pipewire wireplumber pipewire-pulse git make golang-go x11-utils libinput-tools curl ca-certificates fonts-noto-core libnss3 libgbm1 dbus-user-session mesa-vulkan-drivers)
+    [[ "$GAMESCOPE_FROM_SOURCE" == "yes" ]] || PACKAGES=(gamescope "${PACKAGES[@]}")
     local NAME
     for NAME in "libasound2t64 libasound2" "libgtk-3-0t64 libgtk-3-0" "libatk-bridge2.0-0t64 libatk-bridge2.0-0"; do
       # shellcheck disable=SC2086
@@ -253,6 +390,7 @@ setup_deps_install() {
     sudo DEBIAN_FRONTEND=noninteractive apt-get install -y "${PACKAGES[@]}" || fail "apt-get failed to install the dependencies."
   fi
   changed "Installed system packages"
+  [[ "$GAMESCOPE_FROM_SOURCE" == "yes" ]] && setup_gamescope_build
 
   if confirm "Also install Chromium, for web apps that need DRM (Netflix, Disney+)?"; then
     if [[ "$OS" == "arch" ]]; then
@@ -566,6 +704,9 @@ cmd_update() {
   git -C "$REPO_DIR" pull --ff-only || fail "git pull failed. Commit or stash local changes in $REPO_DIR and try again."
   # Re-read the version, since this script itself may have changed
   MEDIAHUB_VERSION="$(grep -m1 '^MEDIAHUB_VERSION=' "$REPO_DIR/setup.sh" | cut -d'"' -f2)"
+  GAMESCOPE_VERSION="$(grep -m1 '^GAMESCOPE_VERSION=' "$REPO_DIR/setup.sh" | cut -d'"' -f2)"
+  # Rebuild gamescope when the pinned version changed
+  [[ -n "$(gamescope_source_version)" ]] && setup_gamescope_build
   setup_deps_node
   setup_build_install
   if pgrep -u "$(whoami)" -x mediahub > /dev/null && confirm "Restart MediaHub now? Open apps will close."; then
@@ -584,6 +725,12 @@ cmd_uninstall() {
   sudo rm -rf "$INSTALL_DIR"
   sudo rm -f "$BIN_LINK" "$SESSION_LINK" "$UDEV_RULE" "$MODULES_CONF" "$POLKIT_RULE"
   changed "Removed MediaHub and its system rules"
+
+  if [[ -d "$GAMESCOPE_DIR" ]] && confirm "Also remove the gamescope that setup.sh built in $GAMESCOPE_DIR?"; then
+    sudo find /usr/local/bin /usr/local/share/vulkan/implicit_layer.d -lname "$GAMESCOPE_DIR/*" -delete
+    sudo rm -rf "$GAMESCOPE_DIR"
+    changed "Removed gamescope from $GAMESCOPE_DIR"
+  fi
 
   if [[ -f "$GREETD_CONF" ]] && grep -q "MediaHub" "$GREETD_CONF"; then
     if [[ -f "$GREETD_CONF.bak" ]]; then

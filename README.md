@@ -36,7 +36,7 @@ cd mediahub
 
 The script walks you through it and asks before every change it makes:
 
-1. It installs gamescope, greetd, PipeWire and the build tools. On Debian it enables `trixie-backports` (contrib), where gamescope lives.
+1. It installs gamescope, greetd, PipeWire and the build tools. On Debian it enables `trixie-backports` (contrib), where gamescope lives. Ubuntu 24.04 doesn't package gamescope at all, so there it builds gamescope from source into `/opt/gamescope` (along with the few newer libraries it needs, so your system's own copies stay untouched).
 2. It builds MediaHub and installs it to `/opt/mediahub`.
 3. It sets up controller access and the phone remote's virtual mouse and keyboard.
 4. It asks which TV output, resolution and refresh rate to use, and whether to turn on VRR and HDR.
