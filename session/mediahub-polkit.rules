@@ -1,5 +1,5 @@
-// Written by MediaHub's setup.sh: lets the MediaHub user power off, restart and suspend from the hub
-// without a password prompt, even while someone is logged in over SSH.
+// Written by MediaHub's setup.sh: lets the MediaHub user power off, restart and suspend from the hub, and pick
+// Wi-Fi networks through NetworkManager, without a password prompt, even while someone is logged in over SSH.
 polkit.addRule(function (action, subject) {
   var actions = [
     "org.freedesktop.login1.power-off",
@@ -9,7 +9,8 @@ polkit.addRule(function (action, subject) {
     "org.freedesktop.login1.suspend",
     "org.freedesktop.login1.suspend-multiple-sessions",
   ];
-  if (subject.user == "__USER__" && actions.indexOf(action.id) !== -1) {
+  if (subject.user != "__USER__") return;
+  if (actions.indexOf(action.id) !== -1 || action.id.indexOf("org.freedesktop.NetworkManager.") === 0) {
     return polkit.Result.YES;
   }
 });

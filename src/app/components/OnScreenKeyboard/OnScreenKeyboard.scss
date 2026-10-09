@@ -1,0 +1,52 @@
+.on-screen-keyboard {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+
+  &.is-disabled {
+    opacity: 0.4;
+    pointer-events: none;
+  }
+
+  &__row {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  &__key {
+    flex-basis: 0;
+    height: 3.2rem;
+    border-radius: var(--hub-radius-small);
+    background: var(--hub-surface);
+    font-size: 1.25rem;
+    font-weight: 600;
+    font-variant-ligatures: none;
+
+    &.is-special {
+      font-size: 1rem;
+      color: var(--hub-text-muted);
+    }
+
+    &.is-active {
+      color: var(--hub-text);
+      background: var(--hub-surface-strong);
+    }
+
+    &.is-submit {
+      color: var(--hub-text);
+      background: var(--hub-surface-strong);
+    }
+
+    &.is-focused {
+      background: var(--hub-focus);
+      color: #0b0d12;
+    }
+  }
+
+  // Inside a dialog, so the hints sit under the keys rather than in the screen's corner
+  .hub-hints {
+    position: static;
+    justify-content: flex-end;
+    margin-top: 1rem;
+  }
+}

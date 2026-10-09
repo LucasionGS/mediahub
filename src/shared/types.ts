@@ -78,6 +78,29 @@ export interface NetworkInfo {
   bluetooth: { powered: boolean; connected: string[] } | null; // null = bluetoothctl not available
 }
 
+export interface WifiStatus {
+  device: string | null; // Wi-Fi interface, like wlan0. null = this machine has no Wi-Fi adapter
+  managed: boolean; // NetworkManager runs and manages the adapter. Without it the hub can only show that Wi-Fi exists
+  enabled: boolean; // Wi-Fi radio is on
+  connected: string | null; // SSID of the current network
+}
+
+export interface WifiNetwork {
+  ssid: string;
+  signal: number; // 0..100
+  secure: boolean; // Needs a password
+  enterprise: boolean; // 802.1X (WPA-Enterprise), which needs more than a password and can't be joined from the hub
+  saved: boolean; // NetworkManager remembers it, so it connects without asking for the password
+  active: boolean;
+}
+
+/**
+ * Outcome of joining a Wi-Fi network. Wrong or missing passwords are expected, so they're results rather than errors.
+ */
+export type WifiConnectResult =
+  | { success: true }
+  | { success: false; needsPassword: boolean; message: string };
+
 export interface DesktopEntry {
   id: string; // Desktop file id, like "org.jellyfin.JellyfinDesktop.desktop"
   path: string;
@@ -174,6 +197,11 @@ export interface MediaHubApi {
   listAudioSinks(): Promise<AudioSink[]>;
   setDefaultSink(id: number): Promise<void>;
   getNetworkInfo(): Promise<NetworkInfo>;
+  getWifiStatus(): Promise<WifiStatus>;
+  scanWifi(rescan: boolean): Promise<WifiNetwork[]>;
+  connectWifi(ssid: string, password?: string): Promise<WifiConnectResult>;
+  forgetWifi(ssid: string): Promise<void>;
+  setWifiEnabled(enabled: boolean): Promise<void>;
   power(action: PowerAction): Promise<void>;
   updateSettings(patch: Partial<HubSettings>): Promise<void>;
   forgetPairedDevices(): Promise<void>;

@@ -20,6 +20,7 @@ UDEV_RULE="/etc/udev/rules.d/99-mediahub-uinput.rules"
 MODULES_CONF="/etc/modules-load.d/mediahub.conf"
 POLKIT_RULE="/etc/polkit-1/rules.d/50-mediahub.rules"
 GREETD_CONF="/etc/greetd/config.toml"
+NM_WIFI_CONF="/etc/NetworkManager/conf.d/90-mediahub-wifi-only.conf"
 NVM_VERSION="v0.40.3"
 OTHER_DISPLAY_MANAGERS=(gdm sddm lightdm lxdm ly)
 GAMESCOPE_VERSION="3.16.31" # Built from source where the distro doesn't package gamescope (Ubuntu 24.04)
@@ -604,6 +605,60 @@ setup_companion_configure() {
 
 #endregion
 
+#region Wi-Fi
+
+# Print the first Wi-Fi interface, like wlan0, or nothing when there's no Wi-Fi adapter
+detect_wifi_interface() {
+  local DIR
+  for DIR in /sys/class/net/*/wireless; do
+    [[ -d "$DIR" ]] && basename "$(dirname "$DIR")" && return 0
+  done
+  return 1
+}
+
+# Make Wi-Fi manageable from the hub's settings, which goes through NetworkManager
+setup_wifi_configure() {
+  step "Wi-Fi"
+  local IFACE
+  IFACE="$(detect_wifi_interface)"
+  if [[ -z "$IFACE" ]]; then
+    echo "    No Wi-Fi adapter found. Skipping."
+    return 0
+  fi
+  if ! has_systemd; then
+    echo "    systemd isn't running, so NetworkManager can't be started. Skipping."
+    return 0
+  fi
+  if command -v nmcli > /dev/null && systemctl is-active --quiet NetworkManager; then
+    echo "    NetworkManager manages $IFACE. Pick a network under Settings → Network."
+    return 0
+  fi
+
+  echo "    Found $IFACE. Picking a Wi-Fi network from the hub needs NetworkManager."
+  confirm "Install NetworkManager for Wi-Fi only? Wired networking is left exactly as it is." || return 0
+  if [[ "$OS" == "arch" ]]; then
+    sudo pacman -S --needed --noconfirm networkmanager || fail "pacman failed to install NetworkManager."
+  else
+    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y network-manager || fail "apt-get failed to install NetworkManager."
+  fi
+
+  # Only manage Wi-Fi, so NetworkManager never takes over a working wired setup (netplan, networkd, ifupdown).
+  # If iwd already runs Wi-Fi, NetworkManager drives it instead of fighting it with wpa_supplicant.
+  local BACKEND=""
+  systemctl is-active --quiet iwd && BACKEND=$'\n[device]\nwifi.backend=iwd'
+  sudo mkdir -p "$(dirname "$NM_WIFI_CONF")"
+  sudo tee "$NM_WIFI_CONF" > /dev/null << EOF
+# Written by MediaHub's setup.sh: NetworkManager only handles Wi-Fi, so the hub can pick networks
+[keyfile]
+unmanaged-devices=*,except:type:wifi
+$BACKEND
+EOF
+  sudo systemctl enable --now NetworkManager.service > /dev/null 2>&1 || fail "NetworkManager failed to start. Check \`journalctl -u NetworkManager\`."
+  changed "Installed NetworkManager for Wi-Fi ($IFACE)"
+}
+
+#endregion
+
 #region Boot
 
 # Print the user greetd's fallback greeter runs as on this distro
@@ -655,10 +710,10 @@ setup_boot_configure() {
 # Let the hub user power off, restart and suspend without a password
 setup_power_configure() {
   step "Power actions"
-  if confirm "Allow shutdown, restart and sleep from the hub without a password prompt?"; then
+  if confirm "Allow shutdown, restart, sleep and Wi-Fi changes from the hub without a password prompt?"; then
     sudo mkdir -p "$(dirname "$POLKIT_RULE")"
     sed "s/__USER__/$(whoami)/" "$REPO_DIR/session/mediahub-polkit.rules" | sudo tee "$POLKIT_RULE" > /dev/null
-    changed "Installed the polkit rule for power actions"
+    changed "Installed the polkit rule for power actions and Wi-Fi"
   fi
 }
 
@@ -677,6 +732,7 @@ cmd_setup() {
   setup_input_permissions
   setup_display_configure
   setup_companion_configure
+  setup_wifi_configure
   setup_write_session_conf
   setup_boot_configure
   setup_power_configure

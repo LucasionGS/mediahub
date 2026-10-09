@@ -66,6 +66,7 @@
     padding: 0.6rem 1.4rem;
     border-radius: var(--hub-radius-small);
     font-size: 1.15rem;
+    scroll-margin-block: 5rem; // Scrolling to a row keeps it clear of the button hints in the corner
 
     &.is-selectable.is-focused {
       background: var(--hub-surface-strong);
@@ -74,6 +75,42 @@
 
     &.is-danger .settings-page__label {
       color: var(--hub-danger);
+    }
+
+    &.is-heading {
+      min-height: 0;
+      margin-top: 1.6rem;
+      padding-bottom: 0.2rem;
+      color: var(--hub-text-faint);
+      font-size: 0.95rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+  }
+
+  &__wifi {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    color: var(--hub-text-muted);
+  }
+
+  &__signal {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.15rem;
+    width: 1.4rem;
+    height: 1.1rem;
+
+    span {
+      flex: 1;
+      border-radius: 0.1rem;
+      background: var(--hub-surface-strong);
+
+      &.is-on {
+        background: var(--hub-text);
+      }
     }
   }
 
