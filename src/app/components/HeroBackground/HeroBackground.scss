@@ -1,0 +1,49 @@
+.hero-background {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: var(--hub-bg);
+
+  &__layer {
+    position: absolute;
+    inset: 0;
+    animation: hub-fade-in 600ms var(--hub-ease);
+  }
+
+  &__image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  &__glow {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 70% 80% at 80% 30%, color-mix(in srgb, var(--hero-accent) 55%, transparent), transparent 70%),
+      radial-gradient(ellipse 60% 60% at 10% 100%, color-mix(in srgb, var(--hero-accent) 25%, transparent), transparent 70%),
+      linear-gradient(160deg, color-mix(in srgb, var(--hero-accent) 30%, var(--hub-bg)), var(--hub-bg) 70%);
+  }
+
+  // A huge, soft copy of the icon on the right, standing in for key art
+  &__icon {
+    position: absolute;
+    right: -4rem;
+    top: 4rem;
+    width: 34rem;
+    height: 34rem;
+    object-fit: contain;
+    opacity: 0.16;
+    filter: blur(0.3rem) saturate(1.2);
+  }
+
+  // Keeps text readable over any artwork
+  &__shade {
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(90deg, rgba(5, 7, 13, 0.85) 0%, rgba(5, 7, 13, 0.35) 55%, transparent 100%),
+      linear-gradient(0deg, rgba(5, 7, 13, 0.9) 0%, transparent 45%),
+      linear-gradient(180deg, rgba(5, 7, 13, 0.6) 0%, transparent 25%);
+  }
+}

@@ -1,0 +1,15 @@
+// Written by MediaHub's setup.sh: lets the MediaHub user power off, restart and suspend from the hub
+// without a password prompt, even while someone is logged in over SSH.
+polkit.addRule(function (action, subject) {
+  var actions = [
+    "org.freedesktop.login1.power-off",
+    "org.freedesktop.login1.power-off-multiple-sessions",
+    "org.freedesktop.login1.reboot",
+    "org.freedesktop.login1.reboot-multiple-sessions",
+    "org.freedesktop.login1.suspend",
+    "org.freedesktop.login1.suspend-multiple-sessions",
+  ];
+  if (subject.user == "__USER__" && actions.indexOf(action.id) !== -1) {
+    return polkit.Result.YES;
+  }
+});

@@ -1,0 +1,28 @@
+.app-actions {
+  position: relative;
+  margin: 4.5rem 0 0 4rem;
+  max-width: 50rem;
+  animation: hub-rise-in 320ms var(--hub-ease);
+
+  &__title {
+    font-size: 3.4rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    text-shadow: 0 0.2rem 1.2rem rgba(0, 0, 0, 0.4);
+  }
+
+  &__subtitle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.4rem;
+    font-size: 1.2rem;
+    color: var(--hub-text-muted);
+  }
+
+  &__buttons {
+    display: flex;
+    gap: 1rem;
+    margin-top: 2rem;
+  }
+}

@@ -1,0 +1,134 @@
+.app-picker {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  padding: 3rem 4rem 5.5rem;
+  box-sizing: border-box;
+  background: var(--hub-bg);
+  animation: hub-fade-in var(--hub-duration) var(--hub-ease);
+
+  &__header {
+    display: flex;
+    align-items: center;
+    gap: 3rem;
+  }
+
+  &__title {
+    font-size: 2.4rem;
+    font-weight: 700;
+  }
+
+  &__tabs {
+    display: flex;
+    gap: 0.6rem;
+  }
+
+  &__tab {
+    height: 2.8rem;
+    padding: 0 1.4rem;
+    border-radius: 1.4rem;
+    font-size: 1.1rem;
+    color: var(--hub-text-muted);
+
+    &.is-selected {
+      color: var(--hub-text);
+      background: var(--hub-surface-strong);
+    }
+
+    &.is-focused {
+      background: var(--hub-focus);
+      color: #0b0d12;
+    }
+  }
+
+  &__grid {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-auto-rows: 12rem;
+    align-content: start;
+    gap: 1.2rem;
+    margin: 1.4rem -1rem 0;
+    // Room for the focused card's ring and scale-up
+    padding: 1rem;
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+
+  &__empty {
+    grid-column: 1 / -1;
+    color: var(--hub-text-muted);
+    font-size: 1.2rem;
+  }
+
+  &__card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    padding: 1rem;
+    border-radius: var(--hub-radius);
+    background: var(--hub-surface);
+
+    &.is-focused {
+      background: var(--hub-surface-strong);
+      transform: scale(1.04);
+    }
+
+    &.is-added {
+      opacity: 0.55;
+    }
+  }
+
+  &__icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 5rem;
+    height: 5rem;
+    border-radius: 1rem;
+    font-size: 2.2rem;
+    font-weight: 700;
+
+    img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+  }
+
+  &__name {
+    max-width: 100%;
+    font-size: 1.05rem;
+    font-weight: 600;
+    text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__added {
+    position: absolute;
+    top: 0.7rem;
+    right: 0.8rem;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.85rem;
+    color: var(--hub-success);
+  }
+
+  &__detail {
+    position: absolute;
+    left: 4rem;
+    bottom: 2.2rem;
+    max-width: 60rem;
+    color: var(--hub-text-muted);
+    font-size: 1rem;
+    line-height: 1.5;
+  }
+}

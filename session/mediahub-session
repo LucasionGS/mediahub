@@ -1,0 +1,85 @@
+#!/bin/bash
+
+##########################################
+# MediaHub session developed by Lucasion #
+##########################################
+
+# Starts gamescope with MediaHub as its home app, and starts it again whenever it exits
+# (a crash, or "Restart MediaHub" from the power menu). Settings come from ~/.mediahub/session.conf,
+# which setup.sh writes.
+
+SESSION_CONF="${MEDIAHUB_SESSION_CONF:-$HOME/.mediahub/session.conf}"
+LOG_DIR="$HOME/.mediahub/logs"
+LOG_FILE="$LOG_DIR/session.log"
+
+# Defaults, overridden by the config file
+MEDIAHUB_BIN="/usr/local/bin/mediahub"
+MEDIAHUB_OUTPUT="" # Empty = let gamescope pick the connected display
+MEDIAHUB_WIDTH=""
+MEDIAHUB_HEIGHT=""
+MEDIAHUB_REFRESH=""
+MEDIAHUB_VRR="no"
+MEDIAHUB_HDR="no"
+MEDIAHUB_GAMESCOPE_ARGS=""
+
+if [[ -f "$SESSION_CONF" ]]; then
+  # Export everything so the hub sees settings like MEDIAHUB_COMPANION_PORT
+  set -a
+  # shellcheck source=/dev/null
+  source "$SESSION_CONF"
+  set +a
+fi
+
+mkdir -p "$LOG_DIR"
+
+# Build the gamescope command line from the settings
+session_gamescope_args() {
+  ARGS=(--steam --xwayland-count 2 --hide-cursor-delay 3000 --fade-out-duration 200)
+  [[ -n "$MEDIAHUB_OUTPUT" ]] && ARGS+=(--prefer-output "$MEDIAHUB_OUTPUT")
+  if [[ -n "$MEDIAHUB_WIDTH" && -n "$MEDIAHUB_HEIGHT" ]]; then
+    # Output and app resolution match, so apps and the overlay are never scaled
+    ARGS+=(-W "$MEDIAHUB_WIDTH" -H "$MEDIAHUB_HEIGHT" -w "$MEDIAHUB_WIDTH" -h "$MEDIAHUB_HEIGHT")
+  fi
+  [[ -n "$MEDIAHUB_REFRESH" ]] && ARGS+=(-r "$MEDIAHUB_REFRESH")
+  [[ "$MEDIAHUB_VRR" == "yes" ]] && ARGS+=(--adaptive-sync)
+  [[ "$MEDIAHUB_HDR" == "yes" ]] && ARGS+=(--hdr-enabled)
+  if [[ -n "$MEDIAHUB_GAMESCOPE_ARGS" ]]; then
+    # Intentionally word-split: extra flags from the config file
+    # shellcheck disable=SC2206
+    ARGS+=($MEDIAHUB_GAMESCOPE_ARGS)
+  fi
+}
+
+# Let systemd --user services (and the apps the hub launches through systemd-run) see this session's display
+session_export_environment() {
+  if command -v dbus-update-activation-environment > /dev/null; then
+    dbus-update-activation-environment --systemd XDG_SESSION_TYPE XDG_CURRENT_DESKTOP XDG_SESSION_ID XDG_SEAT XDG_VTNR > /dev/null 2>&1
+  fi
+}
+
+session_export_environment
+session_gamescope_args
+export XDG_CURRENT_DESKTOP="gamescope"
+
+QUICK_EXITS=0
+while true; do
+  STARTED="$(date +%s)"
+  echo "[$(date '+%F %T')] Starting gamescope ${ARGS[*]} -- $MEDIAHUB_BIN" >> "$LOG_FILE"
+  gamescope "${ARGS[@]}" -- "$MEDIAHUB_BIN" >> "$LOG_FILE" 2>&1
+  CODE="$?"
+  echo "[$(date '+%F %T')] gamescope exited with code $CODE" >> "$LOG_FILE"
+
+  # Back off if it keeps dying straight away, so a broken install doesn't spin the CPU
+  if (( $(date +%s) - STARTED < 15 )); then
+    QUICK_EXITS=$((QUICK_EXITS + 1))
+  else
+    QUICK_EXITS=0
+  fi
+  if (( QUICK_EXITS >= 5 )); then
+    echo "[$(date '+%F %T')] Exited quickly 5 times in a row. Waiting 60s before trying again. Check this log for errors." >> "$LOG_FILE"
+    sleep 60
+    QUICK_EXITS=0
+  else
+    sleep 1
+  fi
+done

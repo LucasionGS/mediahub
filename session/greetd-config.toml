@@ -1,0 +1,14 @@
+# Written by MediaHub's setup.sh. The previous config was saved as config.toml.bak.
+
+[terminal]
+vt = 1
+
+# Boot straight into MediaHub as __USER__
+[initial_session]
+command = "/usr/local/bin/mediahub-session"
+user = "__USER__"
+
+# Shown only if the MediaHub session ever ends: a plain text login on the TV
+[default_session]
+command = "agreety --cmd /bin/bash"
+user = "__GREETER_USER__"

@@ -1,0 +1,106 @@
+.quick-menu {
+  position: fixed;
+  inset: 0;
+  animation: hub-fade-in 180ms var(--hub-ease);
+
+  // Darken the app a little so the menu reads well over anything
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(0deg, rgba(0, 0, 0, 0.75) 0%, rgba(0, 0, 0, 0.25) 55%, transparent 100%);
+  }
+
+  &__panel {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 2.4rem 4rem 5.5rem;
+    background: var(--hub-panel);
+    border-top: 0.08rem solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 -2rem 4rem rgba(0, 0, 0, 0.5);
+    animation: quick-menu-rise 260ms var(--hub-ease);
+  }
+
+  &__heading {
+    display: flex;
+    align-items: baseline;
+    gap: 1.2rem;
+    font-size: 1.6rem;
+    font-weight: 700;
+  }
+
+  &__sub {
+    font-size: 1.05rem;
+    font-weight: 400;
+    color: var(--hub-text-muted);
+  }
+
+  &__cards {
+    display: flex;
+    gap: 1rem;
+    margin-top: 1.4rem;
+    --app-tile-size: 6.4rem;
+  }
+
+  &__controls {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    margin-top: 1.6rem;
+  }
+
+  &__control {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 3.2rem;
+    height: 3.2rem;
+    border-radius: 50%;
+    background: var(--hub-surface-strong);
+
+    &.is-focused {
+      background: var(--hub-focus);
+      color: #0b0d12;
+    }
+  }
+
+  &__volume {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    margin-left: 1.6rem;
+    color: var(--hub-text-muted);
+  }
+
+  &__bar {
+    width: 14rem;
+    height: 0.35rem;
+    border-radius: 0.2rem;
+    background: var(--hub-surface-strong);
+    overflow: hidden;
+
+    span {
+      display: block;
+      height: 100%;
+      background: var(--hub-text);
+      transition: width var(--hub-duration) var(--hub-ease);
+    }
+  }
+
+  &__percent {
+    min-width: 4rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .hub-hints {
+    z-index: 1;
+    bottom: 1.6rem;
+  }
+}
+
+@keyframes quick-menu-rise {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}

@@ -1,0 +1,51 @@
+{
+  "name": "mediahub",
+  "productName": "MediaHub",
+  "version": "0.1.0",
+  "description": "A PS5-style home hub for a living-room media server",
+  "main": ".vite/build/main.js",
+  "scripts": {
+    "start": "electron-forge start",
+    "package": "electron-forge package",
+    "make": "electron-forge make",
+    "lint": "eslint --ext .ts,.tsx src",
+    "typecheck": "tsc --noEmit",
+    "build:input": "make -C native/input build"
+  },
+  "keywords": [],
+  "author": {
+    "name": "Lucasion",
+    "email": "lucasion@hotmail.com"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "ws": "8.18.3",
+    "x11": "4.2.2"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "^7.11.2",
+    "@electron-forge/plugin-vite": "^7.11.2",
+    "@electron-forge/plugin-fuses": "^7.11.2",
+    "@electron/fuses": "^1.8.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@types/ws": "^8.18.1",
+    "@typescript-eslint/eslint-plugin": "^8.67.0",
+    "@typescript-eslint/parser": "^8.67.0",
+    "@vitejs/plugin-react-swc": "^4.3.3",
+    "electron": "43.4.0",
+    "eslint": "^8.57.1",
+    "sass": "^1.93.2",
+    "ts-node": "^10.9.2",
+    "typescript": "~5.9.3",
+    "vite": "^7.3.6"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "@swc/core@1.16.13": true,
+    "electron@43.4.0": true,
+    "@parcel/watcher@2.6.0": false
+  }
+}

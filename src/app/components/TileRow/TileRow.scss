@@ -1,0 +1,54 @@
+:root {
+  --tile-row-gap: 1rem;
+  --tile-row-current-size: 9.4rem;
+  --tile-row-name-space: 18rem; // Room beside the focused tile for its name
+}
+
+.tile-row {
+  position: relative;
+  height: var(--tile-row-current-size);
+  margin-top: 1rem;
+
+  &__track {
+    position: absolute;
+    left: 4rem;
+    top: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--tile-row-gap);
+    height: 100%;
+    // Slide so the focused tile sits at the left edge
+    transform: translateX(calc(var(--tile-row-index) * -1 * (var(--app-tile-size) + var(--tile-row-gap))));
+    transition: transform 320ms var(--hub-ease);
+  }
+
+  &__tile {
+    transition: width var(--hub-duration) var(--hub-ease), height var(--hub-duration) var(--hub-ease), opacity var(--hub-duration), margin var(--hub-duration) var(--hub-ease), box-shadow var(--hub-duration) var(--hub-ease);
+
+    &.is-current {
+      width: var(--tile-row-current-size);
+      height: var(--tile-row-current-size);
+      margin-right: var(--tile-row-name-space);
+    }
+  }
+
+  &__name {
+    position: absolute;
+    left: calc(4rem + var(--tile-row-current-size) + 1.6rem);
+    top: 50%;
+    max-width: calc(var(--tile-row-name-space) - 3rem);
+    transform: translateY(-50%);
+    font-size: 1.5rem;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    animation: hub-fade-in 260ms var(--hub-ease);
+    pointer-events: none;
+  }
+
+  // Dim the row a little while focus is elsewhere on the screen
+  &:not(.is-active) .tile-row__tile:not(.is-current) {
+    opacity: 0.7;
+  }
+}

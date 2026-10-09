@@ -1,0 +1,2 @@
+# Written by MediaHub's setup.sh: lets the input group create virtual devices (the phone remote's mouse and keyboard)
+KERNEL=="uinput", SUBSYSTEM=="misc", GROUP="input", MODE="0660", OPTIONS+="static_node=uinput"

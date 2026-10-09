@@ -1,0 +1,142 @@
+:root {
+  // Theme
+  --hub-bg: #05070d;
+  --hub-text: #f4f6fb;
+  --hub-text-muted: rgba(244, 246, 251, 0.62);
+  --hub-text-faint: rgba(244, 246, 251, 0.38);
+  --hub-surface: rgba(255, 255, 255, 0.08);
+  --hub-surface-strong: rgba(255, 255, 255, 0.16);
+  --hub-panel: rgba(14, 17, 26, 0.92);
+  --hub-focus: #ffffff;
+  --hub-focus-glow: rgba(255, 255, 255, 0.45);
+  --hub-danger: #ff5a5f;
+  --hub-success: #3ddc97;
+  --hub-radius: 0.9rem;
+  --hub-radius-small: 0.5rem;
+  --hub-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --hub-duration: 220ms;
+  --hub-font: "SST", "Inter", "Noto Sans", "Segoe UI", system-ui, sans-serif;
+}
+
+// Everything is sized in rem, and 1rem is 1/54 of the screen height, so the UI scales from 720p to 4K
+html {
+  font-size: calc(100vh / 54);
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background: var(--hub-bg);
+  color: var(--hub-text);
+  font-family: var(--hub-font);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  cursor: default;
+
+  // The overlay window is transparent; only its panel draws
+  &.view-overlay {
+    background: transparent;
+  }
+}
+
+// Scrolling follows focus on a TV, so scrollbars are just noise
+* {
+  scrollbar-width: none;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+// Shared focus look: a white ring with a soft glow, like the PS5
+.hub-focusable {
+  outline: none;
+  transition: transform var(--hub-duration) var(--hub-ease), box-shadow var(--hub-duration) var(--hub-ease), background var(--hub-duration) var(--hub-ease);
+
+  &.is-focused {
+    box-shadow: 0 0 0 0.18rem var(--hub-focus), 0 0 1.6rem 0.2rem var(--hub-focus-glow);
+  }
+}
+
+.hub-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+  height: 3rem;
+  padding: 0 1.6rem;
+  border-radius: 1.5rem;
+  background: var(--hub-surface-strong);
+  font-size: 1.05rem;
+  font-weight: 600;
+  white-space: nowrap;
+
+  &.is-focused {
+    background: var(--hub-focus);
+    color: #0b0d12;
+  }
+
+  &--icon {
+    width: 3rem;
+    padding: 0;
+    justify-content: center;
+  }
+
+  &--danger.is-focused {
+    background: var(--hub-danger);
+    color: #fff;
+  }
+}
+
+// Small button hints along the bottom of a screen
+.hub-hints {
+  position: absolute;
+  right: 4rem;
+  bottom: 2.2rem;
+  display: flex;
+  gap: 2rem;
+  font-size: 0.95rem;
+  color: var(--hub-text-muted);
+
+  &__hint {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  &__glyph {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.6rem;
+    height: 1.6rem;
+    padding: 0 0.4rem;
+    box-sizing: border-box;
+    border-radius: 0.8rem;
+    border: 0.1rem solid var(--hub-text-faint);
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--hub-text);
+  }
+}
+
+@keyframes hub-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes hub-rise-in {
+  from { opacity: 0; transform: translateY(1.2rem); }
+  to { opacity: 1; transform: translateY(0); }
+}

@@ -1,0 +1,8 @@
+# Fresh Arch Linux with a sudo user, for testing setup.sh without touching a real machine
+FROM archlinux:latest
+RUN pacman -Syu --noconfirm --needed sudo git which && \
+  useradd -m hub && echo "hub ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/hub
+COPY --chown=hub:hub . /home/hub/mediahub
+USER hub
+WORKDIR /home/hub/mediahub
+CMD ["bash", "docker/test-setup.sh"]

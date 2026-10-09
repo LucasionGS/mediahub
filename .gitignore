@@ -1,0 +1,6 @@
+node_modules/
+.vite/
+out/
+native/input/bin/
+.env
+*.log

@@ -1,0 +1,16 @@
+# Name of this package. Must match ^[a-z0-9\-]+$
+name: "mediahub"
+# Version of this package. Must match ^[0-9]+\.[0-9]+\.[0-9]+$
+version: "0.1.0"
+# Description of this package.
+description: "A PS5-style home hub for a living-room media server, running in gamescope."
+# Author of this package.
+author: "Lucasion"
+# Directory of the files to include in the package.
+# Can be a string (for any) or a map of platform to string. Platform can be "linux", "windows", or "any".
+dist:
+  linux_x64: "out/MediaHub-linux-x64/"
+  linux_arm64: "out/MediaHub-linux-arm64/"
+bin:
+  linux_x64: ["mediahub"]
+  linux_arm64: ["mediahub"]

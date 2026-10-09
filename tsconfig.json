@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "commonjs",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "sourceMap": true,
+    "outDir": "dist",
+    "moduleResolution": "node10",
+    "resolveJsonModule": true,
+    "jsx": "react-jsx"
+  },
+  "include": ["src", "forge.env.d.ts"],
+  // electron-forge loads forge.config.ts through ts-node; transpile-only keeps
+  // type errors in that graph from becoming startup failures.
+  "ts-node": {
+    "transpileOnly": true
+  }
+}
