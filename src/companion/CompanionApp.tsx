@@ -19,6 +19,13 @@ const TABS: { id: Tab; label: string; icon: IconName }[] = [
 const TAB_KEY = "mediahub.tab";
 
 /**
+ * Pairing code from the hub's QR code (`/?pair=123456`). Read once and removed from the address bar, since the code
+ * only works once and shouldn't end up in a bookmark or the home screen shortcut.
+ */
+const QR_PAIRING_CODE = new URLSearchParams(location.search).get("pair");
+if (QR_PAIRING_CODE !== null) history.replaceState(null, "", location.pathname);
+
+/**
  * The phone companion: pairing, then a remote, trackpad, keyboard and app manager for the hub.
  */
 export default function CompanionApp() {
@@ -31,7 +38,7 @@ export default function CompanionApp() {
 
   if (error) return <div className="companion__message">{error}</div>;
   if (paired === null) return <div className="companion__message">Connecting…</div>;
-  if (!paired) return <Pair onPaired={() => setPaired(true)} />;
+  if (!paired) return <Pair initialCode={QR_PAIRING_CODE} onPaired={() => setPaired(true)} />;
   return <Remote onUnpaired={() => setPaired(false)} />;
 }
 

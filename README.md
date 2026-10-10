@@ -10,7 +10,7 @@ A PS5-style home screen for the media server under your TV. It boots straight in
 - **Console-style home screen**: A row of big app tiles, a background that follows the focused app, menu sounds, and the familiar "A to start, Y for options" controls.
 - **Apps and web apps**: Put installed apps on the home screen, or any website as its own fullscreen web app. YouTube gets its proper TV interface. Netflix and Disney+ open in Chromium, since they need DRM.
 - **Instant switching**: Apps keep running in the background. Tap the Guide/PS button for the quick menu, where you can switch apps, close them, change the volume or turn things off. Hold it to jump straight home.
-- **Your phone is the remote**: Open the hub's address on your phone for a D-pad remote, a laptop-style trackpad, and your phone's own keyboard for typing on the TV. No more pecking out passwords with a controller.
+- **Your phone is the remote**: Scan the QR code under Settings → Phone remote (or open the hub's address) on your phone for a D-pad remote, a laptop-style trackpad, and your phone's own keyboard for typing on the TV. No more pecking out passwords with a controller.
 - **Open links on the TV**: Paste a link on your phone and it opens on the TV. YouTube links go straight into the TV app, a bit like casting.
 - **Manage everything from the couch**: Add apps from the TV with the controller, or from your phone, where you can also rename them, change their links and upload your own tile art and backgrounds.
 - **Wi-Fi from the sofa**: Settings → Network lists the Wi-Fi networks around you. Pick one and type the password with the on-screen keyboard (or a real keyboard, if you have one handy). Machines without Wi-Fi simply don't show it.

@@ -8,6 +8,7 @@ import Icon, { type IconName } from "../Icon/Icon";
 import Hints from "../Hints/Hints";
 import ConfirmDialog from "../Dialog/ConfirmDialog";
 import WifiPasswordDialog from "../WifiPasswordDialog/WifiPasswordDialog";
+import PairPhoneDialog from "../PairPhoneDialog/PairPhoneDialog";
 import type { AudioSink, HubState, NetworkInfo, WifiNetwork, WifiStatus } from "../../../shared/types";
 
 export interface SettingsPageProps {
@@ -58,6 +59,7 @@ interface RowContext {
   connectingTo: string | null;
   selectNetwork: (network: WifiNetwork) => void;
   setWifiDialog: (dialog: WifiDialog) => void;
+  showPairQr: () => void;
 }
 
 /**
@@ -73,6 +75,7 @@ export default function SettingsPage(props: SettingsPageProps) {
   const [network, setNetwork] = useState<NetworkInfo | null>(null);
   const [wifiDialog, setWifiDialog] = useState<WifiDialog | null>(null);
   const [connectingTo, setConnectingTo] = useState<string | null>(null);
+  const [pairQrOpen, setPairQrOpen] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
 
   const sectionId = SECTIONS[section].id;
@@ -118,7 +121,7 @@ export default function SettingsPage(props: SettingsPageProps) {
     }
   };
 
-  const rows = buildRows(sectionId, { state, sinks, setSinks, network, wifi, connectingTo, selectNetwork, setWifiDialog });
+  const rows = buildRows(sectionId, { state, sinks, setSinks, network, wifi, connectingTo, selectNetwork, setWifiDialog, showPairQr: () => setPairQrOpen(true) });
   const selectable = rows.filter(row => row.onSelect || row.onAdjust);
   // Follow the focused row by key, so it stays put when the Wi-Fi list reorders after a scan
   const keyIndex = rowFocus.key ? selectable.findIndex(row => row.key === rowFocus.key) : -1;
@@ -173,7 +176,7 @@ export default function SettingsPage(props: SettingsPageProps) {
       Sounds.select();
       row.onOptions();
     }
-  }, !wifiDialog);
+  }, !wifiDialog && !pairQrOpen);
 
   const focusedRow = inContent ? selectable[focusRow] : undefined;
   const hints: [string, string][] = focusedRow?.onAdjust ? [["←→", "Adjust"]] : [["A", "Select"]];
@@ -221,6 +224,9 @@ export default function SettingsPage(props: SettingsPageProps) {
         ))}
       </div>
       <Hints hints={hints} />
+      {pairQrOpen && state.companion.url && (
+        <PairPhoneDialog url={state.companion.url} pairingCode={state.companion.pairingCode} onClose={() => setPairQrOpen(false)} />
+      )}
       {wifiDialog?.kind === "password" && (
         <WifiPasswordDialog
           ssid={wifiDialog.ssid}
@@ -280,6 +286,7 @@ function buildRows(section: SectionId, ctx: RowContext): Row[] {
       ...(sinks.length === 0 ? [{ key: "no-sinks", label: "No audio outputs found. Is PipeWire running?" }] : []),
     ];
     case "remote": return [
+      ...(state.companion.url ? [{ key: "qr", label: "Pair with a QR code", value: "Scan it with your phone", onSelect: ctx.showPairQr }] : []),
       { key: "url", label: "Open on your phone", value: state.companion.url ?? "Not running", big: true },
       { key: "code", label: "Pairing code", value: state.companion.pairingCode.replace(/(\d{3})(\d{3})/, "$1 $2"), big: true },
       { key: "devices", label: "Paired phones", value: String(state.companion.pairedDevices) },

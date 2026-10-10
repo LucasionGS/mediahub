@@ -1,31 +1,44 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import CompanionApi from "../../Api/CompanionApi";
 
 export interface PairProps {
+  initialCode?: string | null; // From the hub's QR code. Pairs straight away
   onPaired: () => void;
 }
 
 /**
- * First visit: enter the 6-digit code shown on the TV under Settings → Phone remote.
+ * First visit: enter the 6-digit code shown on the TV under Settings → Phone remote, or scan its QR code.
  */
 export default function Pair(props: PairProps) {
-  const { onPaired } = props;
-  const [code, setCode] = useState("");
+  const { initialCode = null, onPaired } = props;
+  const [code, setCode] = useState(initialCode ?? "");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const triedInitial = useRef(false);
 
-  const submit = async (event: React.FormEvent) => {
-    event.preventDefault();
+  const pairWith = async (value: string) => {
     setBusy(true);
     setError(null);
     try {
-      await CompanionApi.pair(code.replace(/\s/g, ""));
+      await CompanionApi.pair(value.replace(/\s/g, ""));
       onPaired();
     } catch (err) {
       setError((err as Error).message);
     } finally {
       setBusy(false);
     }
+  };
+
+  useEffect(() => {
+    // The ref keeps React's development double-run from spending the single-use code twice
+    if (!initialCode || triedInitial.current) return;
+    triedInitial.current = true;
+    pairWith(initialCode);
+  }, [initialCode]);
+
+  const submit = (event: React.FormEvent) => {
+    event.preventDefault();
+    pairWith(code);
   };
 
   return (
