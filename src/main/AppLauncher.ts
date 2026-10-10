@@ -41,6 +41,17 @@ const CLOSE_GRACE_MS = 5000;
 const EXTERNAL_BROWSERS = ["chromium", "google-chrome-stable", "google-chrome", "brave", "brave-browser", "vivaldi-stable"];
 
 /**
+ * Chromium-based browsers, by executable name and Flatpak app id. Added as desktop apps, they open as a normal window
+ * that gamescope never maximises, so they're started fullscreen instead.
+ */
+const CHROMIUM_BROWSERS = new Set([
+  ...EXTERNAL_BROWSERS,
+  "chromium-browser", "chrome", "brave-browser-stable", "vivaldi", "microsoft-edge", "microsoft-edge-stable", "thorium-browser",
+  "org.chromium.Chromium", "com.google.Chrome", "com.brave.Browser", "com.vivaldi.Vivaldi", "com.microsoft.Edge",
+  "io.github.ungoogled_software.ungoogled_chromium",
+]);
+
+/**
  * Launches apps so gamescope can tell their windows apart: under a `reaper SteamLaunch AppId=<ID>` parent like Steam
  * does, inside their own systemd scope (`app-steam-app<ID>-<n>.scope`, read by gamescope 3.16.26+ and used to stop
  * the whole app). Keeps track of what's running.
@@ -179,8 +190,12 @@ export class AppLauncher extends EventEmitter {
 
   private async buildCommand(app: HubApp): Promise<string[]> {
     if (app.type === "desktop") {
+      let command = app.command ?? "";
+      if (this.gamescope.isAvailable() && isChromiumCommand(command) && !/--(kiosk|start-fullscreen|app=)/.test(command)) {
+        command += " --start-fullscreen";
+      }
       // Desktop Exec lines are shell-style, so let sh handle quoting. `exec` keeps the pid the app's own.
-      return ["sh", "-c", `exec ${app.command}`];
+      return ["sh", "-c", `exec ${command}`];
     }
     if (app.browser === "external") {
       const browser = Settings.get("externalBrowser") ?? await findExternalBrowser();
@@ -329,6 +344,21 @@ function waitForExit(child: ChildProcess, timeout: number): Promise<void> {
       resolve();
     });
   });
+}
+
+/**
+ * Whether a desktop Exec line starts a Chromium-based browser, directly, through `env` or as a Flatpak.
+ */
+function isChromiumCommand(command: string): boolean {
+  // Examples:
+  // /usr/bin/chromium
+  // env GTK_USE_PORTAL=1 brave-browser-stable
+  // /usr/bin/flatpak run --branch=stable --arch=x86_64 --command=chromium org.chromium.Chromium
+  const words = command.trim().split(/\s+/).filter(word => word !== "env" && !/^\w+=/.test(word));
+  if (Path.basename(words[0] ?? "") === "flatpak") {
+    return words.slice(2).some(word => !word.startsWith("-") && CHROMIUM_BROWSERS.has(word));
+  }
+  return CHROMIUM_BROWSERS.has(Path.basename(words[0] ?? ""));
 }
 
 async function findExternalBrowser(): Promise<string | null> {
