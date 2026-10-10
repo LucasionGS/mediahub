@@ -26,9 +26,13 @@ check() {
 echo "##### First run #####"
 ./setup.sh --yes || { echo "setup.sh failed with code $?"; exit 1; }
 
-check "hub binary installed" test -x /opt/mediahub/mediahub
-check "hub runs as the hub user" bash -c '/opt/mediahub/mediahub --version 2>/dev/null; [[ -r /opt/mediahub/resources/app.asar ]]' 
-check "input helper bundled" test -x /opt/mediahub/resources/mediahub-input
+check "hub binary installed" test -x /opt/mediahub/current/mediahub
+check "hub runs as the hub user" bash -c '/opt/mediahub/current/mediahub --version 2>/dev/null; [[ -r /opt/mediahub/current/resources/app.asar ]]' 
+check "input helper bundled" test -x /opt/mediahub/current/resources/mediahub-input
+check "install owned by the hub user" bash -c '[[ "$(stat -c %U /opt/mediahub /opt/mediahub/versions)" == "$(printf "hub\nhub")" ]]'
+check "version uses the shared sandbox" bash -c '[[ "$(readlink /opt/mediahub/current/chrome-sandbox)" == /opt/mediahub/chrome-sandbox ]]'
+check "build info written" grep -q '"commit"' /opt/mediahub/current/build-info.json
+check "setup revision recorded" test -s /opt/mediahub/setup-revision
 check "mediahub link" test -L /usr/local/bin/mediahub
 check "session script" test -x /usr/local/bin/mediahub-session
 check "chrome-sandbox is setuid root" bash -c '[[ "$(stat -c "%U %a" /opt/mediahub/chrome-sandbox)" == "root 4755" ]]'
@@ -40,11 +44,12 @@ check "greetd logs in hub" grep -q 'user = "hub"' /etc/greetd/config.toml
 check "greetd runs the session" grep -q mediahub-session /etc/greetd/config.toml
 check "session.conf written" grep -q 'MEDIAHUB_COMPANION_PORT="8420"' "$HOME/.mediahub/session.conf"
 check "session script syntax" bash -n /usr/local/bin/mediahub-session
-check "input helper runs" bash -c '/opt/mediahub/resources/mediahub-input version | grep -q .'
+check "input helper runs" bash -c '/opt/mediahub/current/resources/mediahub-input version | grep -q .'
 
 echo "##### Second run (idempotent) #####"
 ./setup.sh --yes > /tmp/second-run.log 2>&1 || { tail -30 /tmp/second-run.log; echo "second run failed"; exit 1; }
 check "still one udev rule" bash -c '[[ "$(ls /etc/udev/rules.d/ | grep -c mediahub)" == 1 ]]'
+check "previous version kept for going back" bash -c '[[ "$(ls /opt/mediahub/versions | wc -l)" == 2 ]]'
 check "greetd backup not overwritten by our own config" bash -c '! grep -q MediaHub /etc/greetd/config.toml.bak 2>/dev/null'
 
 echo "##### Uninstall #####"

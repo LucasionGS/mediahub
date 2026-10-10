@@ -12,16 +12,19 @@ import PairPhoneDialog from "../PairPhoneDialog/PairPhoneDialog";
 import type { AudioSink, HubState, NetworkInfo, WifiNetwork, WifiStatus } from "../../../shared/types";
 
 export interface SettingsPageProps {
+  initialSection?: SectionId;
+  startUpdate?: boolean; // Opened from the home screen's update button: start updating, or offer the restart
   onClose: () => void;
 }
 
-type SectionId = "audio" | "remote" | "network" | "interface" | "about";
+export type SectionId = "audio" | "remote" | "network" | "interface" | "updates" | "about";
 
 const SECTIONS: { id: SectionId; label: string; icon: IconName }[] = [
   { id: "audio", label: "Sound", icon: "speaker" },
   { id: "remote", label: "Phone remote", icon: "phone" },
   { id: "network", label: "Network", icon: "wifi" },
   { id: "interface", label: "Interface", icon: "sliders" },
+  { id: "updates", label: "Updates", icon: "download" },
   { id: "about", label: "System", icon: "info" },
 ];
 
@@ -60,22 +63,24 @@ interface RowContext {
   selectNetwork: (network: WifiNetwork) => void;
   setWifiDialog: (dialog: WifiDialog) => void;
   showPairQr: () => void;
+  showRestartPrompt: () => void;
 }
 
 /**
  * Settings: sound output and volume, phone pairing, network status and Wi-Fi, interface options and system info.
  */
 export default function SettingsPage(props: SettingsPageProps) {
-  const { onClose } = props;
+  const { initialSection, startUpdate = false, onClose } = props;
   const state = useController(MediaHub.hub).state!;
-  const [section, setSection] = useState(0);
-  const [inContent, setInContent] = useState(false);
+  const [section, setSection] = useState(() => Math.max(0, SECTIONS.findIndex(s => s.id === initialSection)));
+  const [inContent, setInContent] = useState(initialSection !== undefined);
   const [rowFocus, setRowFocus] = useState<{ index: number; key: string | null }>({ index: 0, key: null });
   const [sinks, setSinks] = useState<AudioSink[]>([]);
   const [network, setNetwork] = useState<NetworkInfo | null>(null);
   const [wifiDialog, setWifiDialog] = useState<WifiDialog | null>(null);
   const [connectingTo, setConnectingTo] = useState<string | null>(null);
   const [pairQrOpen, setPairQrOpen] = useState(false);
+  const [restartPrompt, setRestartPrompt] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
 
   const sectionId = SECTIONS[section].id;
@@ -89,6 +94,22 @@ export default function SettingsPage(props: SettingsPageProps) {
     if (sectionId === "audio") MediaHub.run(() => MediaHub.api.listAudioSinks()).then(list => setSinks(list ?? []));
     if (sectionId === "network") refreshNetwork();
   }, [sectionId, state.volume.volume, refreshNetwork]);
+
+  // Opened from the update button: start the update, or offer the restart when it's already installed
+  useEffect(() => {
+    if (!startUpdate) return;
+    const { status, available } = MediaHub.hub.state!.update;
+    if (status === "ready") setRestartPrompt(true);
+    else if (available && (status === "idle" || status === "failed")) MediaHub.run(() => MediaHub.api.installUpdate());
+  }, [startUpdate]);
+
+  // Offer the restart as soon as an update finishes installing
+  const updateStatus = state.update.status;
+  const previousUpdateStatus = useRef(updateStatus);
+  useEffect(() => {
+    if (previousUpdateStatus.current === "updating" && updateStatus === "ready") setRestartPrompt(true);
+    previousUpdateStatus.current = updateStatus;
+  }, [updateStatus]);
 
   const onWifiChanged = () => {
     wifi.refresh(false);
@@ -121,7 +142,7 @@ export default function SettingsPage(props: SettingsPageProps) {
     }
   };
 
-  const rows = buildRows(sectionId, { state, sinks, setSinks, network, wifi, connectingTo, selectNetwork, setWifiDialog, showPairQr: () => setPairQrOpen(true) });
+  const rows = buildRows(sectionId, { state, sinks, setSinks, network, wifi, connectingTo, selectNetwork, setWifiDialog, showPairQr: () => setPairQrOpen(true), showRestartPrompt: () => setRestartPrompt(true) });
   const selectable = rows.filter(row => row.onSelect || row.onAdjust);
   // Follow the focused row by key, so it stays put when the Wi-Fi list reorders after a scan
   const keyIndex = rowFocus.key ? selectable.findIndex(row => row.key === rowFocus.key) : -1;
@@ -176,7 +197,7 @@ export default function SettingsPage(props: SettingsPageProps) {
       Sounds.select();
       row.onOptions();
     }
-  }, !wifiDialog && !pairQrOpen);
+  }, !wifiDialog && !pairQrOpen && !restartPrompt);
 
   const focusedRow = inContent ? selectable[focusRow] : undefined;
   const hints: [string, string][] = focusedRow?.onAdjust ? [["←→", "Adjust"]] : [["A", "Select"]];
@@ -224,6 +245,18 @@ export default function SettingsPage(props: SettingsPageProps) {
         ))}
       </div>
       <Hints hints={hints} />
+      {restartPrompt && (
+        <ConfirmDialog
+          title="Restart MediaHub?"
+          message="The update is installed and takes effect after a restart. Open apps will close."
+          confirmLabel="Restart"
+          onCancel={() => setRestartPrompt(false)}
+          onConfirm={() => {
+            setRestartPrompt(false);
+            MediaHub.run(() => MediaHub.api.power("restart-hub"));
+          }}
+        />
+      )}
       {pairQrOpen && state.companion.url && (
         <PairPhoneDialog url={state.companion.url} pairingCode={state.companion.pairingCode} onClose={() => setPairQrOpen(false)} />
       )}
@@ -324,6 +357,7 @@ function buildRows(section: SectionId, ctx: RowContext): Row[] {
       { key: "sounds", label: "Menu sounds", checked: state.settings.uiSounds, onSelect: () => MediaHub.run(() => api.updateSettings({ uiSounds: !state.settings.uiSounds })) },
       { key: "clock", label: "24-hour clock", checked: state.settings.clock24h, onSelect: () => MediaHub.run(() => api.updateSettings({ clock24h: !state.settings.clock24h })) },
     ];
+    case "updates": return buildUpdateRows(ctx);
     case "about": return [
       { key: "version", label: "MediaHub version", value: state.version },
       { key: "mode", label: "Display mode", value: state.gamescope ? "Gamescope" : "Standalone (no gamescope)" },
@@ -332,6 +366,71 @@ function buildRows(section: SectionId, ctx: RowContext): Row[] {
       { key: "running", label: "Open apps", value: String(state.running.length) },
     ];
   }
+}
+
+/**
+ * What's installed, the update's progress or what's new, and the branch to update from.
+ */
+function buildUpdateRows(ctx: RowContext): Row[] {
+  const { update } = ctx.state;
+  const api = MediaHub.api;
+  const short = (commit: string | null) => commit ? commit.slice(0, 7) : "unknown";
+  const time = (at: number) => new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: !ctx.state.settings.clock24h });
+  const installedBranch = update.installed.branch && update.installed.branch !== update.branch ? ` (${update.installed.branch})` : "";
+  const rows: Row[] = [{ key: "installed", label: "Installed", value: `${update.installed.version} · ${short(update.installed.commit)}${installedBranch}` }];
+  if (!update.supported) {
+    rows.push({ key: "unsupported", label: update.message ?? "This hub can't update itself." });
+    return rows;
+  }
+
+  const updating = update.status === "updating";
+  if (updating) {
+    rows.push({ key: "progress", label: update.message ?? "Updating…", slider: update.progress, value: `${Math.round(update.progress * 100)}%` });
+  }
+  else if (update.status === "ready") {
+    rows.push({ key: "restart", label: "Restart to finish updating", value: "Restart", onSelect: ctx.showRestartPrompt });
+  }
+  else if (update.available && update.latest) {
+    rows.push({
+      key: "install",
+      label: update.status === "failed" ? "Try updating again" : "Update now",
+      value: short(update.latest.commit),
+      onSelect: () => MediaHub.run(() => api.installUpdate()),
+    });
+  }
+  else if (update.latest) {
+    rows.push({ key: "up-to-date", label: "MediaHub is up to date", value: short(update.latest.commit) });
+  }
+  if (!updating && update.message && update.status !== "ready") {
+    rows.push({ key: "message", label: update.message, danger: update.status === "failed" || update.status === "needs-setup" });
+  }
+  else if (update.status === "ready" && update.message) {
+    rows.push({ key: "message", label: update.message });
+  }
+
+  const branches = update.branches.length > 0 ? update.branches : [update.branch];
+  const switchBranch = (direction: -1 | 1) => {
+    const next = branches[(Math.max(0, branches.indexOf(update.branch)) + direction + branches.length) % branches.length];
+    if (next !== update.branch) MediaHub.run(() => api.setUpdateBranch(next));
+  };
+  rows.push({
+    key: "branch",
+    label: "Branch",
+    value: branches.length > 1 && !updating ? `‹ ${update.branch} ›` : update.branch,
+    ...(updating || branches.length < 2 ? {} : { onAdjust: switchBranch, onSelect: () => switchBranch(1) }),
+  });
+  rows.push({
+    key: "check",
+    label: "Check for updates",
+    value: update.checking ? "Checking…" : update.lastChecked ? `Checked at ${time(update.lastChecked)}` : undefined,
+    ...(updating ? {} : { onSelect: () => MediaHub.run(() => api.checkForUpdates()) }),
+  });
+
+  if (update.available && update.latest && update.latest.commits.length > 0) {
+    rows.push({ key: "whats-new", label: "What's new", heading: true });
+    for (const commit of update.latest.commits) rows.push({ key: `commit-${commit.sha}`, label: commit.subject, value: short(commit.sha) });
+  }
+  return rows;
 }
 
 /**

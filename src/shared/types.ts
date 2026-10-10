@@ -121,6 +121,37 @@ export interface HubSettings {
   clock24h: boolean;
   externalBrowser: string | null; // null = auto-detect chromium/chrome/brave
   companionPort: number;
+  updateBranch: string; // Git branch the hub updates from
+}
+
+export type UpdateStatus =
+  | "idle"
+  | "updating"
+  | "ready" // Installed, takes effect after a restart
+  | "failed"
+  | "needs-setup"; // The update needs ./setup.sh, which needs root
+
+export interface UpdateCommit {
+  sha: string;
+  subject: string;
+}
+
+/**
+ * Updating the hub from its git repository.
+ */
+export interface UpdateState {
+  supported: boolean; // false when the hub isn't installed in the versioned layout, for example in development
+  repository: string;
+  branch: string;
+  branches: string[]; // Branches on the remote, for picking one in settings
+  installed: { version: string; commit: string | null; branch: string | null };
+  latest: { commit: string; commits: UpdateCommit[] } | null; // null = not checked yet. `commits` is newest first, may be empty
+  available: boolean; // `latest` differs from what's installed
+  checking: boolean;
+  lastChecked: number | null;
+  status: UpdateStatus;
+  progress: number; // 0..1 while updating
+  message: string | null; // Current step while updating, or what went wrong
 }
 
 /**
@@ -138,6 +169,7 @@ export interface HubState {
   settings: HubSettings;
   input: { helper: boolean; remote: boolean; controllers: string[] };
   version: string;
+  update: UpdateState;
 }
 
 export type PowerAction = "poweroff" | "reboot" | "suspend" | "restart-hub";
@@ -203,6 +235,9 @@ export interface MediaHubApi {
   forgetWifi(ssid: string): Promise<void>;
   setWifiEnabled(enabled: boolean): Promise<void>;
   power(action: PowerAction): Promise<void>;
+  checkForUpdates(): Promise<void>;
+  installUpdate(): Promise<void>;
+  setUpdateBranch(branch: string): Promise<void>;
   updateSettings(patch: Partial<HubSettings>): Promise<void>;
   forgetPairedDevices(): Promise<void>;
 }

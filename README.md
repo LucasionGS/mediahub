@@ -14,6 +14,7 @@ A PS5-style home screen for the media server under your TV. It boots straight in
 - **Open links on the TV**: Paste a link on your phone and it opens on the TV. YouTube links go straight into the TV app, a bit like casting.
 - **Manage everything from the couch**: Add apps from the TV with the controller, or from your phone, where you can also rename them, change their links and upload your own tile art and backgrounds.
 - **Wi-Fi from the sofa**: Settings → Network lists the Wi-Fi networks around you. Pick one and type the password with the on-screen keyboard (or a real keyboard, if you have one handy). Machines without Wi-Fi simply don't show it.
+- **Updates itself**: When there's a new version, an Update button pops up next to settings. Press it and the hub downloads, builds and installs the update in the background, with a progress bar under Settings → Updates, then asks to restart. You can pick which branch it follows there too.
 - **Set up in one go**: `setup.sh` installs everything, asks a few questions about your TV, and makes the machine boot into MediaHub. It works on Arch and Debian/Ubuntu.
 
 ![The quick menu over a running app](docs/screenshots/quick-menu.png)
@@ -38,7 +39,7 @@ cd mediahub
 The script walks you through it and asks before every change it makes:
 
 1. It installs gamescope, greetd, PipeWire and the build tools. On Debian it enables `trixie-backports` (contrib), where gamescope lives. Ubuntu 24.04 doesn't package gamescope at all, so there it builds gamescope from source into `/opt/gamescope` (along with the few newer libraries it needs, so your system's own copies stay untouched).
-2. It builds MediaHub and installs it to `/opt/mediahub`.
+2. It builds MediaHub and installs it to `/opt/mediahub`, owned by your user so the hub can update itself later.
 3. It sets up controller access and the phone remote's virtual mouse and keyboard.
 4. It asks which TV output, resolution and refresh rate to use, and whether to turn on VRR and HDR.
 5. It picks the phone companion's port and opens it in ufw or firewalld.
@@ -48,7 +49,7 @@ The script walks you through it and asks before every change it makes:
 
 Run `./setup.sh` again any time to change your answers; it remembers the previous ones. Other commands:
 
-- `./setup.sh update` pulls the latest version, rebuilds and reinstalls.
+- `./setup.sh update` pulls the latest version, rebuilds and reinstalls. Usually you won't need it: the hub updates itself from Settings → Updates. Now and then an update changes system settings too, and the hub then asks you to run `./setup.sh` once.
 - `./setup.sh uninstall` removes MediaHub and puts your old greetd config back.
 - `--yes` answers yes to everything, for unattended runs.
 
@@ -87,8 +88,15 @@ In web apps the D-pad and A/B buttons act as arrow keys, Enter and Escape, which
 - `apps.json` and `settings.json`;
 - `artwork/` for tile art and backgrounds;
 - `profiles/`, one browser profile per web app;
-- `logs/`, holding each app's output from its last run and `session.log`;
+- `logs/`, holding each app's output from its last run, `session.log` and `update.log`;
 - `session.conf`, the settings `setup.sh` writes.
+
+**Install layout and updates:** `/opt/mediahub` belongs to the hub's user, so updating needs no root.
+- Each build lives in `versions/<date>-<commit>/` with a `build-info.json`, and `current` points at the one in use. `/usr/local/bin/mediahub` and `mediahub-session` link through it. The previous version stays for going back.
+- `chrome-sandbox` must be setuid root on Ubuntu 24.04+. `setup.sh` installs one, owned by root, at `/opt/mediahub/chrome-sandbox`, and every version links to it.
+- The hub checks the branch from Settings → Updates (default `master`) every 6 hours with `git ls-remote`, and lists what's new through GitHub's API. Set `MEDIAHUB_UPDATE_REPOSITORY` to follow a fork.
+- Updating clones that branch fresh into `~/.cache/mediahub/update` and runs its own `setup.sh install-update`, which builds it at low priority and switches `current` in one rename. The new version runs after the restart.
+- When an update needs root (a new `chrome-sandbox`, or a higher `SETUP_REVISION` in `setup.sh` for changed packages or system rules), it stops and asks for `./setup.sh` instead. Bump `SETUP_REVISION` whenever a change needs that.
 
 **Development:**
 

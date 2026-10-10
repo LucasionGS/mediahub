@@ -116,6 +116,8 @@
 
   &__label {
     flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere; // Long paths and commit messages wrap instead of running off the row
   }
 
   &__value {

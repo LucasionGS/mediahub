@@ -9,9 +9,19 @@
 #   git clone <repo> mediahub && cd mediahub && ./setup.sh
 
 MEDIAHUB_VERSION="0.1.0"
+# Bump when a change needs ./setup.sh to run again (packages, system rules, install layout). The hub won't update
+# itself past a higher revision than the one installed, and asks for ./setup.sh update instead.
+SETUP_REVISION="1"
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-INSTALL_DIR="/opt/mediahub"
+# Owned by the hub user, so the hub can install updates without root: one folder per build under versions/, the
+# `current` link pointing at the one in use, and a single setuid-root chrome-sandbox that every version links to
+INSTALL_DIR="${MEDIAHUB_INSTALL_DIR:-/opt/mediahub}"
+VERSIONS_DIR="$INSTALL_DIR/versions"
+CURRENT_LINK="$INSTALL_DIR/current"
+SANDBOX="$INSTALL_DIR/chrome-sandbox"
+REVISION_FILE="$INSTALL_DIR/setup-revision"
+KEEP_VERSIONS=2 # The current one and the one before, to go back to
 BIN_LINK="/usr/local/bin/mediahub"
 SESSION_LINK="/usr/local/bin/mediahub-session"
 DATA_DIR="$HOME/.mediahub"
@@ -403,6 +413,12 @@ setup_deps_install() {
   fi
 }
 
+# Run nvm without the user's .npmrc. nvm refuses to work when it sets a global `prefix` (a common way to install
+# global packages without sudo), and it only reads .npmrc for that check, so npm itself still uses it.
+nvm_quiet() {
+  NPM_CONFIG_USERCONFIG=/dev/null nvm "$@"
+}
+
 # Make sure the Node major version from .nvmrc is used. Newer majors aren't safe: Electron Forge's packager
 # silently stops halfway on Node 26.
 setup_deps_node() {
@@ -415,7 +431,7 @@ setup_deps_node() {
   # shellcheck source=/dev/null
   [[ -s "$NVM_DIR/nvm.sh" ]] && source "$NVM_DIR/nvm.sh"
   if command -v nvm > /dev/null; then
-    nvm use "$WANTED_MAJOR" > /dev/null 2>&1
+    nvm_quiet use "$WANTED_MAJOR" > /dev/null 2>&1
   fi
 
   if command -v node > /dev/null && [[ "$(node --version | tr -d 'v' | cut -d. -f1)" == "$WANTED_MAJOR" ]]; then
@@ -426,13 +442,15 @@ setup_deps_node() {
   local FOUND="none"
   command -v node > /dev/null && FOUND="$(node --version)"
   if ! command -v nvm > /dev/null; then
-    confirm "MediaHub builds with Node $WANTED_MAJOR (found: $FOUND). Install nvm $NVM_VERSION (to ~/.nvm) and Node $WANTED?" || fail "Install Node $WANTED_MAJOR and run setup.sh again."
+    confirm "MediaHub builds with Node $WANTED_MAJOR (found: $FOUND). Install nvm $NVM_VERSION (to $NVM_DIR) and Node $WANTED?" || fail "Install Node $WANTED_MAJOR and run setup.sh again."
+    # nvm's installer refuses to run when NVM_DIR is set but doesn't exist yet
+    mkdir -p "$NVM_DIR"
     curl -fsSL "https://raw.githubusercontent.com/nvm-sh/nvm/$NVM_VERSION/install.sh" | PROFILE=/dev/null bash || fail "Installing nvm failed."
     # shellcheck source=/dev/null
     source "$NVM_DIR/nvm.sh"
   fi
-  nvm install "$WANTED" || fail "nvm failed to install Node $WANTED."
-  nvm use "$WANTED" > /dev/null
+  nvm_quiet install "$WANTED" || fail "nvm failed to install Node $WANTED."
+  nvm_quiet use "$WANTED" > /dev/null
   changed "Installed Node $WANTED with nvm"
 }
 
@@ -440,37 +458,121 @@ setup_deps_node() {
 
 #region Build and install
 
-# Build the hub and the input helper, and install them to /opt/mediahub
-setup_build_install() {
+# Report progress to the hub during install-update, as `::progress:: <percent> <message>` lines
+progress() {
+  [[ "$REPORT_PROGRESS" == "yes" ]] && echo "::progress:: $1 $2"
+  return 0
+}
+
+# Escape a value for a JSON string
+json_escape() {
+  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
+# Build the hub and the input helper. Sets BUILD_DIR to the packaged app.
+setup_build() {
   step "Building MediaHub"
   cd "$REPO_DIR" || fail "Can't open $REPO_DIR."
+  progress 15 "Downloading build tools"
   npm ci || fail "npm ci failed. See the output above."
+  progress 40 "Building the controller helper"
   make -C native/input build || fail "Building the input helper failed. Check that make and Go are installed."
   local ARCH="x64"
   [[ "$PLATFORM" == "linux_arm64" ]] && ARCH="arm64"
-  local BUILD="$REPO_DIR/out/MediaHub-linux-$ARCH"
+  BUILD_DIR="$REPO_DIR/out/MediaHub-linux-$ARCH"
 
   # Packaging downloads Electron from GitHub, which occasionally answers with a server error, so retry a couple of times
+  progress 50 "Building MediaHub"
   local ATTEMPT
   for ATTEMPT in 1 2 3; do
-    npm run package && [[ -x "$BUILD/mediahub" ]] && break
-    (( ATTEMPT == 3 )) && fail "Packaging MediaHub failed: no build at $BUILD. See the output above."
+    npm run package && [[ -x "$BUILD_DIR/mediahub" ]] && break
+    (( ATTEMPT == 3 )) && fail "Packaging MediaHub failed: no build at $BUILD_DIR. See the output above."
     printf_red "    Packaging failed (attempt $ATTEMPT of 3). Trying again in 10 seconds..."
     sleep 10
   done
+}
 
-  step "Installing to $INSTALL_DIR"
-  sudo rm -rf "$INSTALL_DIR"
-  sudo cp -r "$BUILD" "$INSTALL_DIR" || fail "Copying the build to $INSTALL_DIR failed."
+# Set up the versioned install folder, owned by the hub user, and the links to it. Replaces the old single
+# root-owned install. Needs sudo.
+setup_install_layout() {
+  if [[ ! -d "$VERSIONS_DIR" || ! -O "$INSTALL_DIR" ]]; then
+    if [[ -e "$INSTALL_DIR" ]]; then
+      sudo rm -rf "$INSTALL_DIR" || fail "Removing the old install in $INSTALL_DIR failed."
+      changed "Removed the old single-folder install in $INSTALL_DIR"
+    fi
+    sudo mkdir -p "$VERSIONS_DIR" && sudo chown "$(id -u):$(id -g)" "$INSTALL_DIR" "$VERSIONS_DIR" \
+      || fail "Creating $INSTALL_DIR failed."
+    changed "Created $INSTALL_DIR, owned by $(whoami) so the hub can update itself"
+  fi
+  sudo ln -sfn "$CURRENT_LINK/mediahub" "$BIN_LINK"
+  sudo ln -sfn "$CURRENT_LINK/mediahub-session" "$SESSION_LINK"
+}
+
+# Install the build's chrome-sandbox as the setuid-root helper every version links to. Chromium needs it on systems
+# that restrict user namespaces (Ubuntu 24.04+). Root owns it, so the hub user can't swap it for something else.
+setup_install_sandbox() {
+  if cmp -s "$BUILD_DIR/chrome-sandbox" "$SANDBOX" && [[ "$(stat -c "%U %a" "$SANDBOX")" == "root 4755" ]]; then
+    return
+  fi
+  sudo install -o root -g root -m 4755 "$BUILD_DIR/chrome-sandbox" "$SANDBOX" || fail "Installing chrome-sandbox failed."
+  changed "Installed the setuid chrome-sandbox"
+}
+
+# Copy the build into a new version folder and switch to it. Needs no root, so the hub can run it to update itself.
+# Sets INSTALLED_ID to the new version's folder name.
+install_version() {
+  local COMMIT BRANCH TARGET
+  COMMIT="$(git -C "$REPO_DIR" rev-parse HEAD 2> /dev/null || echo "unknown")"
+  BRANCH="$(git -C "$REPO_DIR" rev-parse --abbrev-ref HEAD 2> /dev/null || echo "unknown")"
+  INSTALLED_ID="$(date +%Y%m%d-%H%M%S)-${COMMIT:0:7}"
+  TARGET="$VERSIONS_DIR/$INSTALLED_ID"
+
+  rm -rf "$TARGET.partial"
+  cp -r "$BUILD_DIR" "$TARGET.partial" || fail "Copying the build to $TARGET failed."
   # The packager creates its output readable by the builder only; the install must be usable by everyone
-  sudo chown -R root:root "$INSTALL_DIR"
-  sudo chmod -R a+rX,go-w "$INSTALL_DIR"
-  # Chromium's sandbox helper must be setuid root on systems that restrict user namespaces (Ubuntu 24.04+)
-  sudo chown root:root "$INSTALL_DIR/chrome-sandbox"
-  sudo chmod 4755 "$INSTALL_DIR/chrome-sandbox"
-  sudo ln -sf "$INSTALL_DIR/mediahub" "$BIN_LINK"
-  sudo install -m 755 "$REPO_DIR/session/mediahub-session" "$SESSION_LINK"
-  changed "Installed MediaHub $MEDIAHUB_VERSION to $INSTALL_DIR"
+  chmod -R a+rX,go-w "$TARGET.partial"
+  # Every version uses the one setuid helper that setup.sh installed
+  ln -sfn "$SANDBOX" "$TARGET.partial/chrome-sandbox"
+  install -m 755 "$REPO_DIR/session/mediahub-session" "$TARGET.partial/mediahub-session"
+  cat > "$TARGET.partial/build-info.json" << EOF
+{
+  "version": "$(json_escape "$MEDIAHUB_VERSION")",
+  "commit": "$(json_escape "$COMMIT")",
+  "branch": "$(json_escape "$BRANCH")",
+  "builtAt": "$(date -u +%FT%TZ)"
+}
+EOF
+  mv "$TARGET.partial" "$TARGET" || fail "Finishing the install in $TARGET failed."
+
+  # Switch in one rename, so a crash or power cut never leaves the hub without a version
+  ln -sfn "versions/$INSTALLED_ID" "$CURRENT_LINK.new" && mv -T "$CURRENT_LINK.new" "$CURRENT_LINK" \
+    || fail "Switching $CURRENT_LINK to the new version failed."
+  prune_versions
+}
+
+# Delete old versions, keeping the newest KEEP_VERSIONS and any that's still running
+prune_versions() {
+  local RUNNING=() PID EXE DIR
+  for PID in $(pgrep -u "$(id -u)" -x mediahub); do
+    EXE="$(readlink "/proc/$PID/exe" 2> /dev/null)" && RUNNING+=("$(dirname "$EXE")")
+  done
+  local COUNT=0
+  while IFS= read -r DIR; do
+    COUNT=$((COUNT + 1))
+    (( COUNT <= KEEP_VERSIONS )) && continue
+    [[ " ${RUNNING[*]} " == *" $DIR "* ]] && continue
+    rm -rf "$DIR"
+  done < <(find "$VERSIONS_DIR" -mindepth 1 -maxdepth 1 -type d ! -name "*.partial" | sort -r)
+}
+
+# Build and install as a new version, setting up the install folder and the sandbox first (needs sudo)
+setup_build_install() {
+  setup_build
+  step "Installing to $INSTALL_DIR"
+  setup_install_layout
+  setup_install_sandbox
+  install_version
+  changed "Installed MediaHub $MEDIAHUB_VERSION to $VERSIONS_DIR/$INSTALLED_ID"
 }
 
 #endregion
@@ -736,6 +838,8 @@ cmd_setup() {
   setup_write_session_conf
   setup_boot_configure
   setup_power_configure
+  # Everything this revision needs is set up now, so the hub may update itself up to it
+  echo "$SETUP_REVISION" > "$REVISION_FILE"
 
   step "Done!"
   local CHANGE
@@ -756,11 +860,20 @@ cmd_setup() {
 # Pull the latest version, rebuild and reinstall
 cmd_update() {
   setup_check_system
-  step "Updating the repository"
-  git -C "$REPO_DIR" pull --ff-only || fail "git pull failed. Commit or stash local changes in $REPO_DIR and try again."
-  # Re-read the version, since this script itself may have changed
-  MEDIAHUB_VERSION="$(grep -m1 '^MEDIAHUB_VERSION=' "$REPO_DIR/setup.sh" | cut -d'"' -f2)"
-  GAMESCOPE_VERSION="$(grep -m1 '^GAMESCOPE_VERSION=' "$REPO_DIR/setup.sh" | cut -d'"' -f2)"
+  if [[ "$MEDIAHUB_UPDATE_PULLED" != "yes" ]]; then
+    step "Updating the repository"
+    git -C "$REPO_DIR" pull --ff-only || fail "git pull failed. Commit or stash local changes in $REPO_DIR and try again."
+    # Carry on with the script that was just pulled, since it may build and install differently
+    local ARGS=(update)
+    [[ "$ASSUME_YES" == "yes" ]] && ARGS+=(--yes)
+    MEDIAHUB_UPDATE_PULLED="yes" exec bash "$REPO_DIR/setup.sh" "${ARGS[@]}"
+  fi
+  if (( SETUP_REVISION > $(installed_revision) )); then
+    echo "    This version changes system settings too, so it needs the full setup. It remembers your answers."
+    confirm "Run the full setup now?" || fail "Run ./setup.sh to finish updating."
+    cmd_setup
+    return
+  fi
   # Rebuild gamescope when the pinned version changed
   [[ -n "$(gamescope_source_version)" ]] && setup_gamescope_build
   setup_deps_node
@@ -772,6 +885,45 @@ cmd_update() {
   fi
   printf_green "Done! Updated to MediaHub $MEDIAHUB_VERSION."
   return 0
+}
+
+# Build this checkout and install it as a new version, without questions or root. The hub runs this from a fresh
+# clone to update itself. Exit codes: 0 = installed, 1 = failed, 4 = ./setup.sh has to run first.
+cmd_install_update() {
+  ASSUME_YES="yes"
+  REPORT_PROGRESS="yes"
+  OS="$(detect_os)"
+  PLATFORM="$(detect_platform)"
+  progress 2 "Checking the installation"
+  if [[ ! -d "$VERSIONS_DIR" || ! -O "$INSTALL_DIR" ]]; then
+    needs_setup "MediaHub was installed before the hub could update itself."
+  fi
+  if (( SETUP_REVISION > $(installed_revision) )); then
+    needs_setup "This update changes system settings too."
+  fi
+  progress 5 "Checking Node.js"
+  setup_deps_node
+  setup_build
+  # Installing a new setuid helper needs root, which the hub doesn't have
+  cmp -s "$BUILD_DIR/chrome-sandbox" "$SANDBOX" || needs_setup "This update comes with a new Chromium sandbox, which needs root to install."
+  progress 90 "Installing"
+  install_version
+  progress 100 "Installed"
+  printf_green "Installed MediaHub $MEDIAHUB_VERSION as $VERSIONS_DIR/$INSTALLED_ID."
+  return 0
+}
+
+# The setup revision this machine was last fully set up with, 0 when unknown
+installed_revision() {
+  local REVISION
+  REVISION="$(cat "$REVISION_FILE" 2> /dev/null)"
+  [[ "$REVISION" =~ ^[0-9]+$ ]] && echo "$REVISION" || echo 0
+}
+
+# Stop install-update with exit code 4, so the hub asks for ./setup.sh
+needs_setup() {
+  printf_red "Error: $1 Run ./setup.sh on the TV box once to finish this update (it remembers your answers)." >&2
+  exit 4
 }
 
 # Remove everything setup.sh installed
@@ -814,6 +966,7 @@ cmd_help() {
   echo
   echo "  setup                Set this machine up to run MediaHub (default)"
   echo "  update               Pull the latest version, rebuild and reinstall"
+  echo "  install-update       Build this checkout and install it without questions (used by the hub)"
   echo "  uninstall            Remove MediaHub and its system changes"
   echo "  version              Print the MediaHub version"
   echo "  help                 Show this help"
@@ -842,6 +995,7 @@ done
 case "${ARGS[0]:-setup}" in
   setup | install) cmd_setup ;;
   update) cmd_update ;;
+  install-update) cmd_install_update ;;
   uninstall | remove) cmd_uninstall ;;
   version) echo "$MEDIAHUB_VERSION" ;;
   help) cmd_help ;;

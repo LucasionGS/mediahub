@@ -4,6 +4,7 @@ import Library from "./Library";
 import Settings from "./Settings";
 import SystemService from "./SystemService";
 import WifiService from "./WifiService";
+import Updater from "./Updater";
 import DesktopEntries from "./DesktopEntries";
 import type { HubAppInput, HubSettings, PowerAction } from "../shared/types";
 
@@ -43,6 +44,9 @@ export function registerIpc() {
   ipcMain.handle("wifi:forget", (_e, ssid: string) => WifiService.forget(ssid));
   ipcMain.handle("wifi:enabled", (_e, enabled: boolean) => WifiService.setEnabled(enabled));
   ipcMain.handle("system:power", (_e, action: PowerAction) => Hub.power(action));
+  ipcMain.handle("update:check", () => Updater.check());
+  ipcMain.handle("update:install", () => Updater.install());
+  ipcMain.handle("update:branch", (_e, branch: string) => Updater.setBranch(branch));
   ipcMain.handle("settings:update", (_e, patch: Partial<HubSettings>) => {
     const { uiSounds, clock24h, externalBrowser } = patch;
     Settings.update(Object.fromEntries(Object.entries({ uiSounds, clock24h, externalBrowser }).filter(([, v]) => v !== undefined)));

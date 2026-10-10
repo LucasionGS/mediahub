@@ -28,6 +28,18 @@
       background: var(--hub-focus);
       color: #0b0d12;
     }
+
+    // A pill with text, so a waiting update stands out next to the round icon buttons
+    &--labelled {
+      width: auto;
+      gap: 0.6rem;
+      padding: 0 1.2rem 0 1rem;
+      border-radius: 1.4rem;
+      background: var(--hub-surface-strong);
+      font-size: 1rem;
+      font-weight: 600;
+      white-space: nowrap;
+    }
   }
 
   &__clock {

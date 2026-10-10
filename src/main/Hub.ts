@@ -6,6 +6,7 @@ import InputService from "./InputService";
 import Library, { TV_USER_AGENT } from "./Library";
 import Settings from "./Settings";
 import SystemService from "./SystemService";
+import Updater from "./Updater";
 import WebIcons from "./WebIcons";
 import type CompanionServer from "./CompanionServer";
 import { FIRST_TEMP_APP_ID, HUB_APP_ID, type HubApp, type HubAppInput, type HubState, type PowerAction, type VolumeInfo } from "../shared/types";
@@ -41,6 +42,9 @@ export class Hub {
     // Catch up on web apps that never got an icon (offline when added, or added by editing apps.json)
     for (const app of Library.list()) WebIcons.fetchFor(app);
     Settings.events.on("change", () => Hub.broadcast());
+    Updater.events.on("change", () => Hub.broadcast());
+    Updater.events.on("installed", (message: string) => Hub.toast(message));
+    Updater.init();
     Hub.launcher.on("change", () => Hub.broadcast());
     Hub.gamescope.on("focus", () => Hub.broadcast());
     Hub.input.on("change", () => Hub.broadcast());
@@ -83,6 +87,7 @@ export class Hub {
       settings: Settings.toPublic(),
       input: { helper: Hub.input.helper, remote: Hub.input.remote, controllers: Hub.input.controllers },
       version: app.getVersion(),
+      update: Updater.getState(),
     };
   }
 

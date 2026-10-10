@@ -44,6 +44,7 @@ const PATHS = {
   image: "M3 3h18v18H3zM8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM21 15l-5-5L5 21",
   back: "M9 14 4 9l5-5M4 9h11a5 5 0 0 1 0 10h-1",
   lock: "M5 11h14v10H5zM8 11V7a4 4 0 0 1 8 0v4",
+  download: "M12 3v12M7 10l5 5 5-5M5 21h14",
 } as const;
 
 export type IconName = keyof typeof PATHS;

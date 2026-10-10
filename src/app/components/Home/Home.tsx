@@ -5,7 +5,7 @@ import useController from "../../lib/useController";
 import useInputLayer from "../../lib/useInputLayer";
 import Sounds from "../../lib/sounds";
 import HeroBackground from "../HeroBackground/HeroBackground";
-import TopBar, { TOP_BAR_ITEMS, type TopBarItem } from "../TopBar/TopBar";
+import TopBar, { getTopBarItems, type TopBarItem } from "../TopBar/TopBar";
 import TileRow from "../TileRow/TileRow";
 import AppActions, { type AppAction } from "../AppActions/AppActions";
 import SideMenu, { type SideMenuItem } from "../SideMenu/SideMenu";
@@ -29,7 +29,7 @@ export default function Home() {
   const [zone, setZone] = useState<Zone>("tiles");
   const [tileIndex, setTileIndex] = useState(0);
   const [actionIndex, setActionIndex] = useState(0);
-  const [topIndex, setTopIndex] = useState(0);
+  const [topItem, setTopItem] = useState<TopBarItem>("settings");
   const [overlay, setOverlay] = useState<Overlay>(null);
   const [moving, setMoving] = useState(false);
 
@@ -40,6 +40,10 @@ export default function Home() {
   const runningIds = useMemo(() => new Set(state.running.map(r => r.appId)), [state.running]);
   const actions: AppAction[] = focusedApp ? ["start", "options", ...(running ? ["close" as const] : [])] : ["add"];
   const actionFocus = Math.min(actionIndex, actions.length - 1);
+  // Focus follows the button rather than its position, since the update button comes and goes
+  const topItems = getTopBarItems(state);
+  const topIndex = Math.max(0, topItems.indexOf(topItem));
+  const [settingsUpdate, setSettingsUpdate] = useState(false); // Settings opened from the update button
 
   useEffect(() => setActionIndex(0), [focusedApp?.appId]);
 
@@ -76,7 +80,8 @@ export default function Home() {
 
   const activateTop = (item: TopBarItem) => {
     Sounds.open();
-    setOverlay(item);
+    setSettingsUpdate(item === "update");
+    setOverlay(item === "update" ? "settings" : item);
   };
 
   const moveTile = (direction: -1 | 1) => {
@@ -140,15 +145,15 @@ export default function Home() {
     else if (zone === "top") {
       if (action === "left" || action === "right") {
         const next = topIndex + (action === "left" ? -1 : 1);
-        if (next < 0 || next >= TOP_BAR_ITEMS.length) return Sounds.bump();
+        if (next < 0 || next >= topItems.length) return Sounds.bump();
         Sounds.move();
-        setTopIndex(next);
+        setTopItem(topItems[next]);
       }
       else if (action === "down" || action === "back") {
         Sounds.move();
         setZone("tiles");
       }
-      else if (action === "confirm") activateTop(TOP_BAR_ITEMS[topIndex]);
+      else if (action === "confirm") activateTop(topItems[topIndex]);
     }
     if (action === "menu") {
       Sounds.open();
@@ -171,7 +176,7 @@ export default function Home() {
       <HeroBackground app={focusedApp} />
       <TopBar
         focusedIndex={zone === "top" && !overlay ? topIndex : null}
-        onHover={i => { setZone("top"); setTopIndex(i); }}
+        onHover={i => { setZone("top"); setTopItem(topItems[i]); }}
         onActivate={activateTop}
       />
       <div className="home__content">
@@ -221,7 +226,13 @@ export default function Home() {
       )}
       {overlay === "power" && <PowerMenu onClose={() => setOverlay(null)} />}
       {overlay === "picker" && <AppPicker onClose={() => setOverlay(null)} />}
-      {overlay === "settings" && <SettingsPage onClose={() => setOverlay(null)} />}
+      {overlay === "settings" && (
+        <SettingsPage
+          initialSection={settingsUpdate ? "updates" : undefined}
+          startUpdate={settingsUpdate}
+          onClose={() => setOverlay(null)}
+        />
+      )}
     </div>
   );
 }

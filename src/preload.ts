@@ -56,6 +56,9 @@ const api: MediaHubApi = {
   forgetWifi: (ssid) => invoke("wifi:forget", ssid),
   setWifiEnabled: (enabled) => invoke("wifi:enabled", enabled),
   power: (action) => invoke("system:power", action),
+  checkForUpdates: () => invoke("update:check"),
+  installUpdate: () => invoke("update:install"),
+  setUpdateBranch: (branch) => invoke("update:branch", branch),
   updateSettings: (patch) => invoke("settings:update", patch),
   forgetPairedDevices: () => invoke("companion:forget"),
 };
