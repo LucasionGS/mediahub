@@ -51,6 +51,7 @@ export class InputController extends Controller {
   private _nextId = 1;
   private _held = new Map<InputAction, number>(); // action -> time of next repeat
   private _enabled = true;
+  private _activityListeners = new Set<() => void>();
 
   /**
    * Start listening to the keyboard and polling gamepads.
@@ -59,7 +60,12 @@ export class InputController extends Controller {
    * while an app has focus, so the page must not handle it too, or the quick menu would toggle twice.
    */
   public start(onGuide: () => void, helperHandlesShortcut: () => boolean) {
+    // Mouse input counts as activity too, since the phone's trackpad arrives as one
+    for (const type of ["mousemove", "mousedown", "wheel"] as const) {
+      window.addEventListener(type, () => this.markActivity(), { passive: true });
+    }
     window.addEventListener("keydown", event => {
+      this.markActivity();
       if (event.key === "Escape" && event.shiftKey) {
         event.preventDefault();
         if (!helperHandlesShortcut()) onGuide();
@@ -107,7 +113,20 @@ export class InputController extends Controller {
    * Send an action to the topmost layer.
    */
   public dispatch(action: InputAction) {
+    this.markActivity();
     this._layers.at(-1)?.handler.current(action);
+  }
+
+  /**
+   * Get called on any input: controller, keyboard or mouse. Returns a function that stops listening.
+   */
+  public onActivity(listener: () => void): () => void {
+    this._activityListeners.add(listener);
+    return () => this._activityListeners.delete(listener);
+  }
+
+  private markActivity() {
+    for (const listener of this._activityListeners) listener();
   }
 
   private readPressed(): Set<InputAction> {

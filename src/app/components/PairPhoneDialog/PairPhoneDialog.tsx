@@ -27,7 +27,7 @@ export default function PairPhoneDialog(props: PairPhoneDialogProps) {
   return (
     <div className="pair-phone-dialog" onClick={onClose}>
       <div className="pair-phone-dialog__panel">
-        <QrCode className="pair-phone-dialog__qr" value={`${url}/?pair=${pairingCode}`} />
+        <QrCode className="pair-phone-dialog__qr" value={pairingLink(url, pairingCode)} />
         <div className="pair-phone-dialog__text">
           <div className="pair-phone-dialog__title">Scan with your phone</div>
           <div className="pair-phone-dialog__message">
@@ -37,11 +37,25 @@ export default function PairPhoneDialog(props: PairPhoneDialogProps) {
             <span>Or open</span>
             <b>{url}</b>
             <span>and enter</span>
-            <b>{pairingCode.replace(/(\d{3})(\d{3})/, "$1 $2")}</b>
+            <b>{formatPairingCode(pairingCode)}</b>
           </div>
           <Hints hints={[["B", "Close"]]} />
         </div>
       </div>
     </div>
   );
+}
+
+/**
+ * Companion link that pairs the phone that opens it, for QR codes.
+ */
+export function pairingLink(url: string, pairingCode: string) {
+  return `${url}/?pair=${pairingCode}`;
+}
+
+/**
+ * A pairing code split in two for reading, like "182 508".
+ */
+export function formatPairingCode(pairingCode: string) {
+  return pairingCode.replace(/(\d{3})(\d{3})/, "$1 $2");
 }

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import MediaHub from "../../MediaHub";
 import useController from "../../lib/useController";
 import useInputLayer from "../../lib/useInputLayer";
+import useIdle from "../../lib/useIdle";
 import Sounds from "../../lib/sounds";
 import HeroBackground from "../HeroBackground/HeroBackground";
 import TopBar, { getTopBarItems, type TopBarItem } from "../TopBar/TopBar";
@@ -14,10 +15,13 @@ import PowerMenu from "../PowerMenu/PowerMenu";
 import AppPicker from "../AppPicker/AppPicker";
 import SettingsPage from "../SettingsPage/SettingsPage";
 import Hints from "../Hints/Hints";
+import PairHint from "../PairHint/PairHint";
 import type { HubApp } from "../../../shared/types";
 
 type Zone = "top" | "tiles" | "actions";
 type Overlay = null | "options" | "power" | "picker" | "settings" | "remove";
+
+const PAIR_HINT_IDLE_MS = 10_000;
 
 /**
  * The home screen: tile row, the focused app's details, and the top bar.
@@ -44,6 +48,9 @@ export default function Home() {
   const topItems = getTopBarItems(state);
   const topIndex = Math.max(0, topItems.indexOf(topItem));
   const [settingsUpdate, setSettingsUpdate] = useState(false); // Settings opened from the update button
+  // With no phone paired, offer pairing once things go quiet. Without a working controller it's the only way in.
+  const { url: companionUrl, pairingCode, pairedDevices } = state.companion;
+  const showPairHint = useIdle(PAIR_HINT_IDLE_MS, overlay === null && !moving && pairedDevices === 0 && companionUrl !== null);
 
   useEffect(() => setActionIndex(0), [focusedApp?.appId]);
 
@@ -201,6 +208,7 @@ export default function Home() {
       {!overlay && (
         <Hints hints={moving ? [["←→", "Move"], ["A", "Done"]] : [["A", running ? "Resume" : "Start"], ["Y", "Options"], ["☰", "Quick menu"]]} />
       )}
+      {showPairHint && companionUrl && <PairHint url={companionUrl} pairingCode={pairingCode} />}
 
       {overlay === "options" && focusedApp && (
         <SideMenu

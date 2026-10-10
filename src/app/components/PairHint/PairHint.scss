@@ -1,0 +1,42 @@
+.pair-hint {
+  position: absolute;
+  left: 4rem;
+  bottom: 2rem;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.7rem 1.2rem 0.7rem 0.7rem;
+  border-radius: var(--hub-radius);
+  background: var(--hub-panel);
+  animation: hub-rise-in 400ms var(--hub-ease);
+
+  &__qr {
+    flex-shrink: 0;
+    width: 7rem;
+    height: 7rem;
+    border-radius: var(--hub-radius-small);
+  }
+
+  &__text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  &__title {
+    margin-bottom: 0.2rem;
+    font-size: 1.05rem;
+    font-weight: 700;
+  }
+
+  &__detail {
+    color: var(--hub-text-muted);
+    font-size: 0.9rem;
+
+    b {
+      color: var(--hub-text);
+      font-variant-numeric: tabular-nums;
+    }
+  }
+}
