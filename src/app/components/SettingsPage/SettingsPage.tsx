@@ -9,6 +9,9 @@ import Hints from "../Hints/Hints";
 import ConfirmDialog from "../Dialog/ConfirmDialog";
 import WifiPasswordDialog from "../WifiPasswordDialog/WifiPasswordDialog";
 import PairPhoneDialog from "../PairPhoneDialog/PairPhoneDialog";
+import BluetoothPairDialog from "../BluetoothPairDialog/BluetoothPairDialog";
+import { buildBluetoothRows, useBluetooth, type BluetoothState } from "./bluetoothRows";
+import { buildDisplayRows, useDisplay, type DisplayState } from "./displayRows";
 import type { AudioSink, HubState, NetworkInfo, WifiNetwork, WifiStatus } from "../../../shared/types";
 
 export interface SettingsPageProps {
@@ -17,22 +20,26 @@ export interface SettingsPageProps {
   onClose: () => void;
 }
 
-export type SectionId = "audio" | "remote" | "network" | "interface" | "updates" | "about";
+export type SectionId = "display" | "audio" | "bluetooth" | "network" | "remote" | "interface" | "updates" | "about";
 
 const SECTIONS: { id: SectionId; label: string; icon: IconName }[] = [
+  { id: "display", label: "Display", icon: "monitor" },
   { id: "audio", label: "Sound", icon: "speaker" },
-  { id: "remote", label: "Phone remote", icon: "phone" },
+  { id: "bluetooth", label: "Bluetooth", icon: "bluetooth" },
   { id: "network", label: "Network", icon: "wifi" },
+  { id: "remote", label: "Phone remote", icon: "phone" },
   { id: "interface", label: "Interface", icon: "sliders" },
   { id: "updates", label: "Updates", icon: "download" },
   { id: "about", label: "System", icon: "info" },
 ];
 
 const WIFI_RESCAN_MS = 15000;
+const UI_SCALES = [0.8, 0.9, 1, 1.1, 1.25];
 
-interface Row {
+export interface Row {
   key: string;
   label: string;
+  icon?: IconName;
   value?: string;
   big?: boolean;
   heading?: boolean; // A small title above a group of rows
@@ -44,6 +51,17 @@ interface Row {
   onAdjust?: (direction: -1 | 1) => void;
   onOptions?: () => void;
   optionsLabel?: string;
+}
+
+/**
+ * A yes/no question to ask before doing something, like forgetting a device.
+ */
+export interface ConfirmRequest {
+  title: string;
+  message?: string;
+  confirmLabel: string;
+  danger?: boolean;
+  onConfirm: () => void;
 }
 
 type WifiDialog =
@@ -62,12 +80,16 @@ interface RowContext {
   connectingTo: string | null;
   selectNetwork: (network: WifiNetwork) => void;
   setWifiDialog: (dialog: WifiDialog) => void;
+  bluetooth: BluetoothState;
+  display: DisplayState;
+  askConfirm: (request: ConfirmRequest) => void;
   showPairQr: () => void;
   showRestartPrompt: () => void;
 }
 
 /**
- * Settings: sound output and volume, phone pairing, network status and Wi-Fi, interface options and system info.
+ * Settings: the display, sound output and volume, Bluetooth devices, network status and Wi-Fi, phone pairing,
+ * interface options, updates and system info.
  */
 export default function SettingsPage(props: SettingsPageProps) {
   const { initialSection, startUpdate = false, onClose } = props;
@@ -81,10 +103,13 @@ export default function SettingsPage(props: SettingsPageProps) {
   const [connectingTo, setConnectingTo] = useState<string | null>(null);
   const [pairQrOpen, setPairQrOpen] = useState(false);
   const [restartPrompt, setRestartPrompt] = useState(false);
+  const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
 
   const sectionId = SECTIONS[section].id;
   const wifi = useWifi(sectionId === "network");
+  const bluetooth = useBluetooth(sectionId === "bluetooth");
+  const display = useDisplay(sectionId === "display");
 
   const refreshNetwork = useCallback(() => {
     MediaHub.run(() => MediaHub.api.getNetworkInfo()).then(info => setNetwork(info ?? null));
@@ -142,7 +167,12 @@ export default function SettingsPage(props: SettingsPageProps) {
     }
   };
 
-  const rows = buildRows(sectionId, { state, sinks, setSinks, network, wifi, connectingTo, selectNetwork, setWifiDialog, showPairQr: () => setPairQrOpen(true), showRestartPrompt: () => setRestartPrompt(true) });
+  const rows = buildRows(sectionId, {
+    state, sinks, setSinks, network, wifi, connectingTo, selectNetwork, setWifiDialog, bluetooth, display,
+    askConfirm: setConfirmRequest,
+    showPairQr: () => setPairQrOpen(true),
+    showRestartPrompt: () => setRestartPrompt(true),
+  });
   const selectable = rows.filter(row => row.onSelect || row.onAdjust);
   // Follow the focused row by key, so it stays put when the Wi-Fi list reorders after a scan
   const keyIndex = rowFocus.key ? selectable.findIndex(row => row.key === rowFocus.key) : -1;
@@ -197,7 +227,7 @@ export default function SettingsPage(props: SettingsPageProps) {
       Sounds.select();
       row.onOptions();
     }
-  }, !wifiDialog && !pairQrOpen && !restartPrompt);
+  }, !wifiDialog && !pairQrOpen && !restartPrompt && !confirmRequest && !state.bluetoothPairing);
 
   const focusedRow = inContent ? selectable[focusRow] : undefined;
   const hints: [string, string][] = focusedRow?.onAdjust ? [["←→", "Adjust"]] : [["A", "Select"]];
@@ -232,6 +262,7 @@ export default function SettingsPage(props: SettingsPageProps) {
             }}
             onClick={() => row.onSelect?.()}
           >
+            {row.icon && <Icon name={row.icon} className="settings-page__icon" />}
             <span className="settings-page__label">{row.label}</span>
             {row.slider !== undefined && (
               <span className="settings-page__slider"><span style={{ width: `${row.slider * 100}%` }} /></span>
@@ -257,6 +288,20 @@ export default function SettingsPage(props: SettingsPageProps) {
           }}
         />
       )}
+      {confirmRequest && (
+        <ConfirmDialog
+          title={confirmRequest.title}
+          message={confirmRequest.message}
+          confirmLabel={confirmRequest.confirmLabel}
+          danger={confirmRequest.danger}
+          onCancel={() => setConfirmRequest(null)}
+          onConfirm={() => {
+            setConfirmRequest(null);
+            confirmRequest.onConfirm();
+          }}
+        />
+      )}
+      {state.bluetoothPairing && <BluetoothPairDialog pairing={state.bluetoothPairing} />}
       {pairQrOpen && state.companion.url && (
         <PairPhoneDialog url={state.companion.url} pairingCode={state.companion.pairingCode} onClose={() => setPairQrOpen(false)} />
       )}
@@ -298,6 +343,8 @@ function buildRows(section: SectionId, ctx: RowContext): Row[] {
   const { state, sinks, setSinks, network } = ctx;
   const api = MediaHub.api;
   switch (section) {
+    case "display": return buildDisplayRows(ctx.display, ctx.askConfirm);
+    case "bluetooth": return buildBluetoothRows(ctx.bluetooth, ctx.askConfirm);
     case "audio": return [
       {
         key: "volume",
@@ -344,18 +391,12 @@ function buildRows(section: SectionId, ctx: RowContext): Row[] {
           .filter(c => !(c.type === "wifi" && wifiRows.length > 0)) // Shown in the Wi-Fi section instead
           .map<Row>(c => ({ key: c.device, label: `${c.type === "wifi" ? "Wi-Fi" : c.type === "ethernet" ? "Ethernet" : c.type} (${c.device})`, value: c.connection || c.state })),
         ...wifiRows,
-        {
-          key: "bluetooth",
-          label: "Bluetooth",
-          value: network.bluetooth
-            ? (network.bluetooth.powered ? (network.bluetooth.connected.length ? network.bluetooth.connected.join(", ") : "On, nothing connected") : "Off")
-            : "Not available",
-        },
       ];
     }
     case "interface": return [
       { key: "sounds", label: "Menu sounds", checked: state.settings.uiSounds, onSelect: () => MediaHub.run(() => api.updateSettings({ uiSounds: !state.settings.uiSounds })) },
       { key: "clock", label: "24-hour clock", checked: state.settings.clock24h, onSelect: () => MediaHub.run(() => api.updateSettings({ clock24h: !state.settings.clock24h })) },
+      buildMenuSizeRow(state.settings.uiScale),
     ];
     case "updates": return buildUpdateRows(ctx);
     case "about": return [
@@ -366,6 +407,25 @@ function buildRows(section: SectionId, ctx: RowContext): Row[] {
       { key: "running", label: "Open apps", value: String(state.running.length) },
     ];
   }
+}
+
+/**
+ * How big the hub's menus are drawn, stepped through with left and right.
+ */
+function buildMenuSizeRow(uiScale: number): Row {
+  const index = UI_SCALES.reduce((best, scale, i) => Math.abs(scale - uiScale) < Math.abs(UI_SCALES[best] - uiScale) ? i : best, 0);
+  const step = (direction: -1 | 1) => {
+    const next = UI_SCALES[index + direction];
+    if (next === undefined) return;
+    MediaHub.run(() => MediaHub.api.updateSettings({ uiScale: next }));
+  };
+  return {
+    key: "ui-scale",
+    label: "Menu size",
+    value: `${index > 0 ? "‹ " : ""}${Math.round(UI_SCALES[index] * 100)}%${index < UI_SCALES.length - 1 ? " ›" : ""}`,
+    onAdjust: step,
+    onSelect: () => MediaHub.run(() => MediaHub.api.updateSettings({ uiScale: UI_SCALES[(index + 1) % UI_SCALES.length] })),
+  };
 }
 
 /**

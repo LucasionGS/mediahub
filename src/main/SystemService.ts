@@ -5,7 +5,7 @@ import type { AudioSink, NetworkInfo, PowerAction, VolumeInfo } from "../shared/
 const DEFAULT_SINK = "@DEFAULT_AUDIO_SINK@";
 
 /**
- * Volume, audio output, power and network status, through `wpctl`, `systemctl`, `nmcli` and `bluetoothctl`.
+ * Volume, audio output, power and network status, through `wpctl`, `systemctl` and `nmcli`.
  */
 export class SystemService {
   private constructor() { }
@@ -103,7 +103,7 @@ export class SystemService {
   }
 
   public static async getNetworkInfo(): Promise<NetworkInfo> {
-    const info: NetworkInfo = { hostname: os.hostname(), addresses: SystemService.getLanAddresses(), connections: [], bluetooth: null };
+    const info: NetworkInfo = { hostname: os.hostname(), addresses: SystemService.getLanAddresses(), connections: [] };
     try {
       // Example:
       // wlan0:wifi:connected:Home WiFi
@@ -115,18 +115,6 @@ export class SystemService {
       }
     } catch {
       // NetworkManager not installed
-    }
-    try {
-      const show = await run("bluetoothctl", ["show"], 3000);
-      const connected = await run("bluetoothctl", ["devices", "Connected"], 3000).catch(() => "");
-      info.bluetooth = {
-        powered: /Powered:\s*yes/.test(show),
-        // Example:
-        // Device AA:BB:CC:DD:EE:FF Xbox Wireless Controller
-        connected: connected.trim().split("\n").filter(Boolean).map(line => line.replace(/^Device \S+ /, "")),
-      };
-    } catch {
-      // bluetoothctl not installed or no adapter
     }
     return info;
   }

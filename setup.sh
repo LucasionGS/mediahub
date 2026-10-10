@@ -200,7 +200,8 @@ setup_load_previous() {
 setup_write_session_conf() {
   mkdir -p "$DATA_DIR"
   cat > "$SESSION_CONF" << EOF
-# MediaHub session settings, written by setup.sh. Run setup.sh again to change them.
+# MediaHub session settings, written by setup.sh. Run setup.sh again to change them, or change the display under
+# Settings → Display in the hub.
 
 ##### Display #####
 MEDIAHUB_OUTPUT="$MEDIAHUB_OUTPUT" # Connector like HDMI-A-1, empty = let gamescope pick
@@ -216,6 +217,8 @@ MEDIAHUB_COMPANION_PORT="$MEDIAHUB_COMPANION_PORT" # Phone companion port
 ##### Advanced #####
 MEDIAHUB_GAMESCOPE_ARGS="$MEDIAHUB_GAMESCOPE_ARGS" # Extra gamescope flags
 EOF
+  # These answers replace any display settings the hub was still trying out
+  rm -f "$SESSION_CONF.trial" "$SESSION_CONF.previous"
   changed "Saved session settings to $SESSION_CONF"
 }
 
@@ -761,6 +764,38 @@ EOF
 
 #endregion
 
+#region Bluetooth
+
+# Install and start BlueZ, so controllers, headphones and keyboards can be paired from the hub
+setup_bluetooth_configure() {
+  step "Bluetooth"
+  if ! compgen -G "/sys/class/bluetooth/hci*" > /dev/null; then
+    echo "    No Bluetooth adapter found. Skipping. Plug one in and run setup.sh again to set it up."
+    return 0
+  fi
+  if ! has_systemd; then
+    echo "    systemd isn't running, so BlueZ can't be started. Skipping."
+    return 0
+  fi
+  if command -v bluetoothctl > /dev/null && systemctl is-active --quiet bluetooth; then
+    echo "    Bluetooth is ready. Pair devices under Settings → Bluetooth."
+    return 0
+  fi
+
+  confirm "Set up Bluetooth, for wireless controllers, headphones and keyboards?" || return 0
+  # Plus PipeWire's Bluetooth plugin, so headphones show up as a sound output
+  if [[ "$OS" == "arch" ]]; then
+    sudo pacman -S --needed --noconfirm bluez bluez-utils pipewire-audio || fail "pacman failed to install BlueZ."
+  else
+    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y bluez libspa-0.2-bluetooth || fail "apt-get failed to install BlueZ."
+  fi
+  command -v rfkill > /dev/null && sudo rfkill unblock bluetooth
+  sudo systemctl enable --now bluetooth.service > /dev/null 2>&1 || fail "Bluetooth failed to start. Check \`journalctl -u bluetooth\`."
+  changed "Installed and started Bluetooth (BlueZ)"
+}
+
+#endregion
+
 #region Boot
 
 # Print the user greetd's fallback greeter runs as on this distro
@@ -835,6 +870,7 @@ cmd_setup() {
   setup_display_configure
   setup_companion_configure
   setup_wifi_configure
+  setup_bluetooth_configure
   setup_write_session_conf
   setup_boot_configure
   setup_power_configure

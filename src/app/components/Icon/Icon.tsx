@@ -45,6 +45,8 @@ const PATHS = {
   back: "M9 14 4 9l5-5M4 9h11a5 5 0 0 1 0 10h-1",
   lock: "M5 11h14v10H5zM8 11V7a4 4 0 0 1 8 0v4",
   download: "M12 3v12M7 10l5 5 5-5M5 21h14",
+  gamepad: "M6 11h4M8 9v4M15 12h.01M18 10h.01M17.3 5H6.7a4 4 0 0 0-4 3.6C2.6 9.4 2 14.5 2 16a3 3 0 0 0 3 3c1 0 1.5-.5 2-1l1.4-1.4A2 2 0 0 1 9.8 16h4.4a2 2 0 0 1 1.4.6L17 18c.5.5 1 1 2 1a3 3 0 0 0 3-3c0-1.5-.6-6.6-.7-7.3a4 4 0 0 0-4-3.7z",
+  headphones: "M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3",
 } as const;
 
 export type IconName = keyof typeof PATHS;

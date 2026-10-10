@@ -1,0 +1,49 @@
+.bluetooth-pair-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+  animation: hub-fade-in var(--hub-duration) var(--hub-ease);
+
+  &__panel {
+    width: 40rem;
+    padding: 2.6rem;
+    border-radius: 1.2rem;
+    background: var(--hub-panel);
+    box-shadow: 0 2rem 5rem rgba(0, 0, 0, 0.6);
+    animation: hub-rise-in 260ms var(--hub-ease);
+
+    .hub-hints {
+      position: static;
+      justify-content: flex-end;
+      margin-top: 2rem;
+    }
+  }
+
+  &__title {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    font-size: 1.7rem;
+    font-weight: 700;
+  }
+
+  &__message {
+    margin-top: 0.8rem;
+    color: var(--hub-text-muted);
+    font-size: 1.1rem;
+    line-height: 1.5;
+  }
+
+  &__code {
+    margin-top: 1.6rem;
+    font-size: 3.4rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.08em;
+    text-align: center;
+  }
+}

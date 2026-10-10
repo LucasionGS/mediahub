@@ -18,9 +18,10 @@
   --hub-font: "SST", "Inter", "Noto Sans", "Segoe UI", system-ui, sans-serif;
 }
 
-// Everything is sized in rem, and 1rem is 1/54 of the screen height, so the UI scales from 720p to 4K
+// Everything is sized in rem, and 1rem is 1/54 of the screen height, so the UI scales from 720p to 4K.
+// The menu size setting scales it on top of that.
 html {
-  font-size: calc(100vh / 54);
+  font-size: calc(100vh / 54 * var(--hub-ui-scale, 1));
 }
 
 html,

@@ -5,30 +5,49 @@
 ##########################################
 
 # Starts gamescope with MediaHub as its home app, and starts it again whenever it exits
-# (a crash, or "Restart MediaHub" from the power menu). Settings come from ~/.mediahub/session.conf,
-# which setup.sh writes.
+# (a crash, "Restart MediaHub" from the power menu, or new display settings). Settings come from
+# ~/.mediahub/session.conf, which setup.sh and the hub's display settings write.
 
 SESSION_CONF="${MEDIAHUB_SESSION_CONF:-$HOME/.mediahub/session.conf}"
+TRIAL_FILE="$SESSION_CONF.trial" # Display settings on trial: "pending" until gamescope starts with them, then "trying"
+PREVIOUS_CONF="$SESSION_CONF.previous" # The settings from before the trial
 LOG_DIR="$HOME/.mediahub/logs"
 LOG_FILE="$LOG_DIR/session.log"
 
-# Defaults, overridden by the config file
-MEDIAHUB_BIN="/usr/local/bin/mediahub"
-MEDIAHUB_OUTPUT="" # Empty = let gamescope pick the connected display
-MEDIAHUB_WIDTH=""
-MEDIAHUB_HEIGHT=""
-MEDIAHUB_REFRESH=""
-MEDIAHUB_VRR="no"
-MEDIAHUB_HDR="no"
-MEDIAHUB_GAMESCOPE_ARGS=""
+# Tells the hub where the settings are, and that this script reads them again at every start
+export MEDIAHUB_SESSION_CONF="$SESSION_CONF"
 
-if [[ -f "$SESSION_CONF" ]]; then
-  # Export everything so the hub sees settings like MEDIAHUB_COMPANION_PORT
-  set -a
-  # shellcheck source=/dev/null
-  source "$SESSION_CONF"
-  set +a
-fi
+# Load the settings, over the defaults
+session_load_conf() {
+  MEDIAHUB_BIN="/usr/local/bin/mediahub"
+  MEDIAHUB_OUTPUT="" # Empty = let gamescope pick the connected display
+  MEDIAHUB_WIDTH=""
+  MEDIAHUB_HEIGHT=""
+  MEDIAHUB_REFRESH=""
+  MEDIAHUB_VRR="no"
+  MEDIAHUB_HDR="no"
+  MEDIAHUB_GAMESCOPE_ARGS=""
+  if [[ -f "$SESSION_CONF" ]]; then
+    # Export everything so the hub sees settings like MEDIAHUB_COMPANION_PORT
+    set -a
+    # shellcheck source=/dev/null
+    source "$SESSION_CONF"
+    set +a
+  fi
+}
+
+# Start new display settings on trial, or put the previous ones back when the last start never kept them: the hub
+# crashed, the TV showed nothing and nobody pressed Keep, or the power went out
+session_check_trial() {
+  [[ -f "$TRIAL_FILE" ]] || return 0
+  if [[ "$(cat "$TRIAL_FILE")" == "pending" ]]; then
+    echo "trying" > "$TRIAL_FILE"
+    return 0
+  fi
+  [[ -f "$PREVIOUS_CONF" ]] && mv -f "$PREVIOUS_CONF" "$SESSION_CONF"
+  rm -f "$TRIAL_FILE"
+  echo "[$(date '+%F %T')] The new display settings weren't kept. Switched back to the previous ones." >> "$LOG_FILE"
+}
 
 mkdir -p "$LOG_DIR"
 
@@ -58,11 +77,13 @@ session_export_environment() {
 }
 
 session_export_environment
-session_gamescope_args
 export XDG_CURRENT_DESKTOP="gamescope"
 
 QUICK_EXITS=0
 while true; do
+  session_check_trial
+  session_load_conf
+  session_gamescope_args
   STARTED="$(date +%s)"
   echo "[$(date '+%F %T')] Starting gamescope ${ARGS[*]} -- $MEDIAHUB_BIN" >> "$LOG_FILE"
   gamescope "${ARGS[@]}" -- "$MEDIAHUB_BIN" >> "$LOG_FILE" 2>&1

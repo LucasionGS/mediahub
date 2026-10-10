@@ -13,6 +13,7 @@ const DEFAULT_SETTINGS: ISettings = {
   externalBrowser: null,
   companionPort: 8420,
   updateBranch: "master",
+  uiScale: 1,
   companionTokens: [],
 };
 
@@ -63,8 +64,8 @@ export class Settings {
    * The settings that are safe to show in the UI (no tokens).
    */
   public static toPublic(): HubSettings {
-    const { uiSounds, clock24h, externalBrowser, companionPort, updateBranch } = Settings.data;
-    return { uiSounds, clock24h, externalBrowser, companionPort, updateBranch };
+    const { uiSounds, clock24h, externalBrowser, companionPort, updateBranch, uiScale } = Settings.data;
+    return { uiSounds, clock24h, externalBrowser, companionPort, updateBranch, uiScale };
   }
 
   private static save() {

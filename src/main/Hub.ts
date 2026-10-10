@@ -1,6 +1,8 @@
 import EventEmitter from "node:events";
 import { app, BrowserWindow } from "electron";
 import AppLauncher from "./AppLauncher";
+import BluetoothService from "./BluetoothService";
+import DisplayService from "./DisplayService";
 import Gamescope from "./Gamescope";
 import InputService from "./InputService";
 import Library, { TV_USER_AGENT } from "./Library";
@@ -45,6 +47,10 @@ export class Hub {
     Updater.events.on("change", () => Hub.broadcast());
     Updater.events.on("installed", (message: string) => Hub.toast(message));
     Updater.init();
+    BluetoothService.events.on("change", () => Hub.broadcast());
+    DisplayService.events.on("change", () => Hub.broadcast());
+    DisplayService.events.on("revert", () => Hub.power("restart-hub"));
+    DisplayService.init();
     Hub.launcher.on("change", () => Hub.broadcast());
     Hub.gamescope.on("focus", () => Hub.broadcast());
     Hub.input.on("change", () => Hub.broadcast());
@@ -88,6 +94,8 @@ export class Hub {
       input: { helper: Hub.input.helper, remote: Hub.input.remote, controllers: Hub.input.controllers },
       version: app.getVersion(),
       update: Updater.getState(),
+      bluetoothPairing: BluetoothService.pairing,
+      displayTrial: DisplayService.trialDeadline,
     };
   }
 

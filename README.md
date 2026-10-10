@@ -13,6 +13,8 @@ A PS5-style home screen for the media server under your TV. It boots straight in
 - **Your phone is the remote**: Scan the QR code under Settings → Phone remote (or open the hub's address) on your phone for a D-pad remote, a laptop-style trackpad, and your phone's own keyboard for typing on the TV. No more pecking out passwords with a controller.
 - **Open links on the TV**: Paste a link on your phone and it opens on the TV. YouTube links go straight into the TV app, a bit like casting.
 - **Manage everything from the couch**: Add apps from the TV with the controller, or from your phone, where you can also rename them, change their links and upload your own tile art and backgrounds.
+- **Bluetooth controllers and headphones**: Settings → Bluetooth finds what's nearby in pairing mode. Pick it and you're done; keyboards get a code to type, and devices that show a code ask you to check it first. Paired devices reconnect by themselves, and controllers show their battery.
+- **Display settings on the TV**: Pick the output, resolution, refresh rate, HDR and VRR under Settings → Display, using what your TV says it supports. New settings come with a "Keep these display settings?" countdown, so if the TV goes black you just wait 20 seconds and it switches back. Menus too small (or too big) from the couch? Settings → Interface → Menu size.
 - **Wi-Fi from the sofa**: Settings → Network lists the Wi-Fi networks around you. Pick one and type the password with the on-screen keyboard (or a real keyboard, if you have one handy). Machines without Wi-Fi simply don't show it.
 - **Updates itself**: When there's a new version, an Update button pops up next to settings. Press it and the hub downloads, builds and installs the update in the background, with a progress bar under Settings → Updates, then asks to restart. You can pick which branch it follows there too.
 - **Set up in one go**: `setup.sh` installs everything, asks a few questions about your TV, and makes the machine boot into MediaHub. It works on Arch and Debian/Ubuntu.
@@ -41,11 +43,12 @@ The script walks you through it and asks before every change it makes:
 1. It installs gamescope, greetd, PipeWire and the build tools. On Debian it enables `trixie-backports` (contrib), where gamescope lives. Ubuntu 24.04 doesn't package gamescope at all, so there it builds gamescope from source into `/opt/gamescope` (along with the few newer libraries it needs, so your system's own copies stay untouched).
 2. It builds MediaHub and installs it to `/opt/mediahub`, owned by your user so the hub can update itself later.
 3. It sets up controller access and the phone remote's virtual mouse and keyboard.
-4. It asks which TV output, resolution and refresh rate to use, and whether to turn on VRR and HDR.
+4. It asks which TV output, resolution and refresh rate to use, and whether to turn on VRR and HDR. You can change these later under Settings → Display too.
 5. It picks the phone companion's port and opens it in ufw or firewalld.
 6. If the machine has Wi-Fi but no NetworkManager, it offers to install NetworkManager just for Wi-Fi. Your wired network setup isn't touched.
-7. It makes the machine log into MediaHub automatically at boot, through greetd.
-8. It lets the hub shut down, restart, sleep and change Wi-Fi without a password prompt.
+7. If the machine has a Bluetooth adapter, it offers to install and start BlueZ, plus PipeWire's Bluetooth support for headphones.
+8. It makes the machine log into MediaHub automatically at boot, through greetd.
+9. It lets the hub shut down, restart, sleep and change Wi-Fi without a password prompt.
 
 Run `./setup.sh` again any time to change your answers; it remembers the previous ones. Other commands:
 
@@ -89,7 +92,7 @@ In web apps the D-pad and A/B buttons act as arrow keys, Enter and Escape, which
 - `artwork/` for tile art and backgrounds;
 - `profiles/`, one browser profile per web app;
 - `logs/`, holding each app's output from its last run, `session.log` and `update.log`;
-- `session.conf`, the settings `setup.sh` writes.
+- `session.conf`, the settings `setup.sh` and Settings → Display write. The session script reads it again every time it starts gamescope. New display settings are on trial until kept: `session.conf.trial` marks them, `session.conf.previous` holds the old ones, and the session puts those back when a start never got kept.
 
 **Install layout and updates:** `/opt/mediahub` belongs to the hub's user, so updating needs no root.
 - Each build lives in `versions/<date>-<commit>/` with a `build-info.json`, and `current` points at the one in use. `/usr/local/bin/mediahub` and `mediahub-session` link through it. The previous version stays for going back.

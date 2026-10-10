@@ -75,7 +75,6 @@ export interface NetworkInfo {
   hostname: string;
   addresses: string[];
   connections: { device: string; type: string; state: string; connection: string }[];
-  bluetooth: { powered: boolean; connected: string[] } | null; // null = bluetoothctl not available
 }
 
 export interface WifiStatus {
@@ -101,6 +100,74 @@ export type WifiConnectResult =
   | { success: true }
   | { success: false; needsPassword: boolean; message: string };
 
+export type BluetoothDeviceKind = "controller" | "headphones" | "speaker" | "keyboard" | "mouse" | "phone" | "computer" | "tv" | "other";
+
+export interface BluetoothDevice {
+  address: string; // Like AA:BB:CC:DD:EE:FF
+  name: string;
+  kind: BluetoothDeviceKind;
+  paired: boolean;
+  connected: boolean;
+  battery: number | null; // 0..100. null = the device doesn't report it
+}
+
+export interface BluetoothStatus {
+  available: boolean; // false = no adapter, or BlueZ isn't installed or running
+  powered: boolean;
+  scanning: boolean; // Looking for devices to pair
+  devices: BluetoothDevice[]; // Paired devices first, then the ones found nearby
+}
+
+/**
+ * A pairing in progress, shown on the TV until it finishes.
+ */
+export interface BluetoothPairing {
+  address: string;
+  name: string;
+  stage: "pairing" | "connecting";
+  passkey: string | null; // Code to type on the keyboard that's being paired
+  confirm: string | null; // Code the device should show too. Pairing waits for a yes or no
+}
+
+/**
+ * Outcome of pairing or connecting. A device that's off or out of range is expected, so it's a result rather than an error.
+ */
+export type BluetoothResult =
+  | { success: true; message?: string }
+  | { success: false; canceled?: boolean; message: string };
+
+/**
+ * How gamescope drives the TV, as stored in the session config. Takes effect when the session starts gamescope again.
+ */
+export interface DisplayConfig {
+  output: string | null; // Connector, like HDMI-A-1. null = let gamescope pick
+  width: number | null; // null (with height) = the display's own preferred resolution
+  height: number | null;
+  refresh: number | null; // Hz. null = gamescope picks
+  vrr: boolean; // Adaptive sync
+  hdr: boolean;
+}
+
+export interface DisplayMode {
+  width: number;
+  height: number;
+  refreshRates: number[]; // Hz, highest first. Empty = the display didn't say
+}
+
+export interface DisplayOutput {
+  name: string; // Connector, like HDMI-A-1
+  label: string | null; // The display's own name, like "LG TV SSCR2"
+  modes: DisplayMode[]; // The display's preferred resolution first
+  hdr: boolean | null; // The display supports HDR. null = unknown
+}
+
+export interface DisplayInfo {
+  supported: boolean; // The session can apply new display settings
+  message: string | null; // Why it can't
+  outputs: DisplayOutput[]; // Connected displays
+  config: DisplayConfig;
+}
+
 export interface DesktopEntry {
   id: string; // Desktop file id, like "org.jellyfin.JellyfinDesktop.desktop"
   path: string;
@@ -122,6 +189,7 @@ export interface HubSettings {
   externalBrowser: string | null; // null = auto-detect chromium/chrome/brave
   companionPort: number;
   updateBranch: string; // Git branch the hub updates from
+  uiScale: number; // Size of the hub's menus, 1 = normal
 }
 
 export type UpdateStatus =
@@ -170,6 +238,8 @@ export interface HubState {
   input: { helper: boolean; remote: boolean; controllers: string[] };
   version: string;
   update: UpdateState;
+  bluetoothPairing: BluetoothPairing | null;
+  displayTrial: number | null; // When new display settings switch back unless kept (epoch ms). null = not trying any
 }
 
 export type PowerAction = "poweroff" | "reboot" | "suspend" | "restart-hub";
@@ -234,6 +304,17 @@ export interface MediaHubApi {
   connectWifi(ssid: string, password?: string): Promise<WifiConnectResult>;
   forgetWifi(ssid: string): Promise<void>;
   setWifiEnabled(enabled: boolean): Promise<void>;
+  getBluetoothStatus(): Promise<BluetoothStatus>;
+  setBluetoothPowered(powered: boolean): Promise<void>;
+  setBluetoothScanning(scanning: boolean): Promise<void>;
+  pairBluetooth(address: string): Promise<BluetoothResult>;
+  answerBluetoothPairing(accept: boolean): Promise<void>;
+  connectBluetooth(address: string): Promise<BluetoothResult>;
+  disconnectBluetooth(address: string): Promise<void>;
+  forgetBluetooth(address: string): Promise<void>;
+  getDisplayInfo(): Promise<DisplayInfo>;
+  applyDisplay(config: DisplayConfig): Promise<void>;
+  keepDisplay(keep: boolean): Promise<void>;
   power(action: PowerAction): Promise<void>;
   checkForUpdates(): Promise<void>;
   installUpdate(): Promise<void>;

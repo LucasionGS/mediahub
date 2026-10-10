@@ -5,6 +5,7 @@ import Sounds from "./lib/sounds";
 import Home from "./components/Home/Home";
 import QuickMenu from "./components/QuickMenu/QuickMenu";
 import Toasts from "./components/Toasts/Toasts";
+import DisplayTrialDialog from "./components/DisplayTrialDialog/DisplayTrialDialog";
 
 export default function App() {
   const hub = useController(MediaHub.hub);
@@ -20,6 +21,7 @@ export default function App() {
   useEffect(() => {
     if (!state) return;
     Sounds.setEnabled(state.settings.uiSounds);
+    document.documentElement.style.setProperty("--hub-ui-scale", String(state.settings.uiScale ?? 1));
     // Only the window that's actually in front reacts to the controller
     MediaHub.input.setEnabled(MediaHub.view === "overlay" ? state.quickMenuOpen : state.hubFocused && !state.quickMenuOpen);
   }, [state]);
@@ -28,6 +30,7 @@ export default function App() {
   return (
     <>
       {MediaHub.view === "overlay" ? <QuickMenu /> : <Home />}
+      {MediaHub.view === "home" && state.displayTrial !== null && <DisplayTrialDialog deadline={state.displayTrial} />}
       <Toasts />
     </>
   );

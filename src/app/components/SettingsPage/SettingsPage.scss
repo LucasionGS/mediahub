@@ -114,6 +114,12 @@
     }
   }
 
+  &__icon {
+    flex-shrink: 0;
+    margin-right: -0.4rem;
+    color: var(--hub-text-muted);
+  }
+
   &__label {
     flex: 1;
     min-width: 0;
