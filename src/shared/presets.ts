@@ -20,6 +20,11 @@ export const WEB_PRESETS: WebPreset[] = [
     app: { type: "web", name: "YouTube", url: "https://www.youtube.com/tv", userAgent: TV_USER_AGENT, browser: "builtin", gamepadKeys: true, accentColor: "#ff0033" },
   },
   {
+    id: "cinemion",
+    app: { type: "web", name: "Cinemion", url: "http://localhost:8600/?mode=tv", userAgent: null, browser: "builtin", gamepadKeys: true, accentColor: "#5b9dff" },
+    note: "Change the server address from the phone companion if Cinemion isn't on this machine.",
+  },
+  {
     id: "jellyfin",
     app: { type: "web", name: "Jellyfin", url: "http://localhost:8096/web/", userAgent: null, browser: "builtin", gamepadKeys: true, accentColor: "#aa5cc3" },
     note: "Change the server address from the phone companion if Jellyfin isn't on this machine.",
