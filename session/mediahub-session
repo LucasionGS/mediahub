@@ -51,6 +51,20 @@ session_check_trial() {
 
 mkdir -p "$LOG_DIR"
 
+# Print the best mode of the display gamescope will use, like "1920x1080". Prints nothing when no display is connected.
+session_preferred_mode() {
+  local PATTERN="*"
+  [[ -n "$MEDIAHUB_OUTPUT" ]] && PATTERN="$MEDIAHUB_OUTPUT"
+  local STATUS
+  # Intentionally unquoted: PATTERN is a glob when no output is set
+  # shellcheck disable=SC2231
+  for STATUS in /sys/class/drm/card*-$PATTERN/status; do
+    [[ -f "$STATUS" && "$(cat "$STATUS")" == "connected" ]] || continue
+    head -1 "${STATUS%/status}/modes"
+    return 0
+  done
+}
+
 # Build the gamescope command line from the settings
 session_gamescope_args() {
   ARGS=(--steam --xwayland-count 2 --hide-cursor-delay 3000 --fade-out-duration 200)
@@ -58,6 +72,9 @@ session_gamescope_args() {
   if [[ -n "$MEDIAHUB_WIDTH" && -n "$MEDIAHUB_HEIGHT" ]]; then
     # Output and app resolution match, so apps and the overlay are never scaled
     ARGS+=(-W "$MEDIAHUB_WIDTH" -H "$MEDIAHUB_HEIGHT" -w "$MEDIAHUB_WIDTH" -h "$MEDIAHUB_HEIGHT")
+  elif [[ "$(session_preferred_mode)" =~ ^([0-9]+)x([0-9]+) ]]; then
+    # Without -w/-h gamescope gives fullscreen apps 1280x720 and scales them up, so they'd look soft on a 1080p+ TV
+    ARGS+=(-w "${BASH_REMATCH[1]}" -h "${BASH_REMATCH[2]}")
   fi
   [[ -n "$MEDIAHUB_REFRESH" ]] && ARGS+=(-r "$MEDIAHUB_REFRESH")
   [[ "$MEDIAHUB_VRR" == "yes" ]] && ARGS+=(--adaptive-sync)
