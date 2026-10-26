@@ -679,6 +679,22 @@ setup_display_configure() {
   confirm "Enable adaptive sync (VRR)? Only if the TV supports it." && MEDIAHUB_VRR="yes"
   MEDIAHUB_HDR="no"
   confirm "Enable HDR output? Only if the TV supports it." && MEDIAHUB_HDR="yes"
+
+  # Intel GPUs on the i915 driver can't scan out the buffers Chromium hands gamescope, so fullscreen apps would show
+  # up as a gray screen. Compositing every frame avoids that.
+  if setup_display_has_i915 && [[ " $MEDIAHUB_GAMESCOPE_ARGS " != *" --force-composition "* ]]; then
+    MEDIAHUB_GAMESCOPE_ARGS="${MEDIAHUB_GAMESCOPE_ARGS:+$MEDIAHUB_GAMESCOPE_ARGS }--force-composition"
+    echo "    This Intel GPU shows fullscreen apps as a gray screen otherwise, so --force-composition was added to the gamescope flags."
+  fi
+}
+
+# Whether a GPU in this machine runs on Intel's i915 driver
+setup_display_has_i915() {
+  local DRIVER
+  for DRIVER in /sys/class/drm/card*/device/driver; do
+    [[ "$(basename "$(readlink -f "$DRIVER")")" == "i915" ]] && return 0
+  done
+  return 1
 }
 
 #endregion
