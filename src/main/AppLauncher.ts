@@ -94,8 +94,10 @@ export class AppLauncher extends EventEmitter {
     const instance = ++this._instance;
     const unit = (await this.hasSystemdRun()) ? `app-steam-app${app.appId}-${instance}` : null;
     const fullArgv = unit
-      // systemd-run expands $VAR in the command line itself; "$$" is its escape for a literal "$"
-      ? ["systemd-run", "--user", "--scope", "--collect", "--quiet", `--unit=${unit}`, "--", ...argv.map(arg => arg.replaceAll("$", "$$$$"))]
+      // systemd-run expands $VAR in the command line itself; "$$" is its escape for a literal "$". Expansion is asked for
+      // explicitly, because older systemd (255 on Ubuntu 24.04) doesn't expand by default with --scope and the "$$" would
+      // reach bash as-is
+      ? ["systemd-run", "--user", "--scope", "--collect", "--quiet", "--expand-environment=yes", `--unit=${unit}`, "--", ...argv.map(arg => arg.replaceAll("$", "$$$$"))]
       : argv;
 
     console.log(`Launching ${app.name} (${app.appId}): ${argv.slice(4 + tagged.length).join(" ")}`);
