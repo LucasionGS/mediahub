@@ -2,10 +2,14 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import EventEmitter from "node:events";
 import Edid from "./Edid";
+import type Gamescope from "./Gamescope";
 import type { DisplayConfig, DisplayInfo, DisplayMode, DisplayOutput } from "../shared/types";
 
 const DRM_DIR = "/sys/class/drm";
 const TRIAL_MS = 20000;
+const HOTPLUG_POLL_MS = 2000;
+const RESYNC_DELAY_MS = 3000; // After the last connect, so a display that flickers in and out is only resynced once
+const RESYNC_OFF_MS = 2000;
 
 /**
  * The TV's output, resolution, refresh rate, VRR and HDR. Gamescope can't change these while it runs, so they're
@@ -36,6 +40,27 @@ export class DisplayService {
     if (DisplayService.readTrial() !== "trying") return;
     DisplayService._trialDeadline = Date.now() + TRIAL_MS;
     DisplayService._trialTimer = setTimeout(() => DisplayService.keep(false), TRIAL_MS);
+  }
+
+  /**
+   * Turn the TV output off and on again shortly after a display connects. Wireless HDMI kits and some TVs come back
+   * from standby showing their own "no signal" screen, and only pick up the picture once the signal starts over.
+   */
+  public static async watchHotplug(gamescope: Gamescope) {
+    if (!gamescope.isAvailable()) return;
+    let connected = await connectedOutputs();
+    let resyncTimer: NodeJS.Timeout | null = null;
+    setInterval(async () => {
+      const now = await connectedOutputs();
+      const added = [...now].some(name => !connected.has(name));
+      connected = now;
+      if (!added) return;
+      if (resyncTimer) clearTimeout(resyncTimer);
+      resyncTimer = setTimeout(() => {
+        resyncTimer = null;
+        if (connected.size > 0) DisplayService.resync(gamescope);
+      }, RESYNC_DELAY_MS);
+    }, HOTPLUG_POLL_MS);
   }
 
   /**
@@ -148,6 +173,18 @@ export class DisplayService {
     return outputs.sort((a, b) => a.name.localeCompare(b.name));
   }
 
+  private static async resync(gamescope: Gamescope) {
+    console.log(`A display connected. Turning the output off for ${RESYNC_OFF_MS / 1000}s so it picks up the signal.`);
+    try {
+      await gamescope.ctl("drm_sleep_external_screen", "1");
+      await new Promise(resolve => setTimeout(resolve, RESYNC_OFF_MS));
+    } catch (error) {
+      console.error("Failed to turn the display output off:", error);
+    } finally {
+      await gamescope.ctl("drm_sleep_external_screen", "0").catch(error => console.error("Failed to turn the display output back on:", error));
+    }
+  }
+
   private static readTrial() {
     const conf = DisplayService.SESSION_CONF;
     if (!conf) return null;
@@ -173,6 +210,20 @@ function validate(config: DisplayConfig) {
     throw new Error(`${config.refresh} Hz isn't a refresh rate.`);
   }
   if (typeof config.vrr !== "boolean" || typeof config.hdr !== "boolean") throw new Error("VRR and HDR must be on or off.");
+}
+
+/**
+ * Names of the connected display outputs, like `HDMI-A-1`.
+ */
+async function connectedOutputs(): Promise<Set<string>> {
+  const names = new Set<string>();
+  for (const entry of await fsp.readdir(DRM_DIR).catch(() => [] as string[])) {
+    const match = /^card\d+-(.+)$/.exec(entry);
+    if (!match) continue;
+    const status = await fsp.readFile(`${DRM_DIR}/${entry}/status`, "utf8").catch(() => "");
+    if (status.trim() === "connected") names.add(match[1]);
+  }
+  return names;
 }
 
 /**

@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import EventEmitter from "node:events";
 import x11 from "x11";
 import { HUB_APP_ID } from "../shared/types";
@@ -140,6 +141,18 @@ export class Gamescope extends EventEmitter {
     if (!this._client) return;
     this._client.ChangeProperty(0, windowId, this._atoms.STEAM_INPUT_FOCUS, CARDINAL, 32, [visible ? 1 : 0]);
     this._client.ChangeProperty(0, windowId, this._atoms._NET_WM_WINDOW_OPACITY, CARDINAL, 32, [visible ? MAX_OPACITY : 0]);
+  }
+
+  /**
+   * Run a `gamescopectl` command against this gamescope, like `ctl("drm_sleep_external_screen", "1")`. Does nothing
+   * outside gamescope.
+   * @throws When `gamescopectl` is missing or fails.
+   */
+  public ctl(...args: string[]): Promise<void> {
+    if (!this._client) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      execFile("gamescopectl", args, { timeout: 5000 }, error => error ? reject(error) : resolve());
+    });
   }
 
   private async refreshFocusableWindows() {

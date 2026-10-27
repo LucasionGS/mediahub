@@ -51,6 +51,7 @@ export class Hub {
     DisplayService.events.on("change", () => Hub.broadcast());
     DisplayService.events.on("revert", () => Hub.power("restart-hub"));
     DisplayService.init();
+    DisplayService.watchHotplug(Hub.gamescope);
     Hub.launcher.on("change", () => Hub.broadcast());
     Hub.gamescope.on("focus", () => Hub.broadcast());
     Hub.input.on("change", () => Hub.broadcast());
