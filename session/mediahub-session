@@ -51,7 +51,73 @@ session_check_trial() {
 
 mkdir -p "$LOG_DIR"
 
-# Print the best mode of the display gamescope will use, like "1920x1080". Prints nothing when no display is connected.
+# Print the resolutions an EDID lists at 50 Hz or more, one "1920x1080" per line, in the same way src/main/Edid.ts reads
+# them. TVs often list 4K at 30 Hz first (like over a USB-C to HDMI adapter), which gamescope skips for a 60 Hz mode.
+session_edid_fast_modes() {
+  local -a B
+  read -r -a B <<< "$(od -An -v -tu1 "$1" 2>/dev/null | tr -s ' \n' '  ')"
+  (( ${#B[@]} >= 128 )) || return 0
+
+  # Detailed timing at byte $1: print it when it's progressive and 50 Hz or more
+  session_edid_dtd() {
+    local I=$1
+    local CLOCK=$(( (B[I] | (B[I + 1] << 8)) * 10000 ))
+    local W=$(( B[I + 2] | ((B[I + 4] & 0xf0) << 4) )) HB=$(( B[I + 3] | ((B[I + 4] & 0x0f) << 8) ))
+    local H=$(( B[I + 5] | ((B[I + 7] & 0xf0) << 4) )) VB=$(( B[I + 6] | ((B[I + 7] & 0x0f) << 8) ))
+    (( CLOCK && W && H && !(B[I + 17] & 0x80) )) || return 0
+    (( CLOCK * 10 / ((W + HB) * (H + VB)) >= 495 )) && echo "${W}x${H}" # 49.5 Hz, so 49.95 Hz modes count as 50
+  }
+  # Progressive CTA-861 formats at 50 Hz or more, by VIC
+  session_edid_vics() {
+    local BYTE VIC
+    for BYTE in "$@"; do
+      VIC=$BYTE
+      (( BYTE >= 129 && BYTE <= 192 )) && VIC=$(( BYTE & 0x7f )) # VICs 1-64 use the top bit to mark the native format
+      case $VIC in
+        1) echo 640x480 ;; 2|3) echo 720x480 ;; 4|19|41|47) echo 1280x720 ;; 14|15) echo 1440x480 ;; 17|18) echo 720x576 ;;
+        29|30) echo 1440x576 ;; 16|31|63|64) echo 1920x1080 ;; 96|97|106|107|117|118|119|120) echo 3840x2160 ;;
+        101|102) echo 4096x2160 ;;
+      esac
+    done
+  }
+
+  local I
+  # Standard timings. Example: 209 192 is 1920x1080 at 60 Hz.
+  for (( I = 38; I < 54; I += 2 )); do
+    (( B[I] == 0 || (B[I] == 1 && B[I + 1] == 1) )) && continue
+    local W=$(( (B[I] + 31) * 8 )) ASPECT=$(( B[I + 1] >> 6 ))
+    local -a NUM=(10 3 4 9) DEN=(16 4 5 16)
+    echo "${W}x$(( (W * NUM[ASPECT] + DEN[ASPECT] / 2) / DEN[ASPECT] ))"
+  done
+  for (( I = 54; I < 126; I += 18 )); do
+    (( B[I] || B[I + 1] )) && session_edid_dtd "$I"
+  done
+
+  # CTA-861 extensions, where TVs list most of their modes
+  local BLOCK
+  for (( BLOCK = 1; BLOCK <= B[126] && (BLOCK + 1) * 128 <= ${#B[@]}; BLOCK++ )); do
+    local BASE=$(( BLOCK * 128 ))
+    (( B[BASE] == 2 )) || continue
+    local START=$(( BASE + B[BASE + 2] )) TAG LENGTH
+    I=$(( BASE + 4 ))
+    while (( I < START && I < BASE + 127 )); do
+      TAG=$(( B[I] >> 5 )) LENGTH=$(( B[I] & 0x1f ))
+      if (( TAG == 2 )); then # Video data block
+        session_edid_vics "${B[@]:I + 1:LENGTH}"
+      elif (( TAG == 7 && B[I + 1] == 14 )); then # Modes that only work with YCbCr 4:2:0
+        session_edid_vics "${B[@]:I + 2:LENGTH - 1}"
+      fi
+      I=$(( I + 1 + LENGTH ))
+    done
+    for (( I = START; I > BASE + 3 && I + 18 <= BASE + 127; I += 18 )); do
+      (( B[I] || B[I + 1] )) || break
+      session_edid_dtd "$I"
+    done
+  done
+}
+
+# Print the best mode of the display gamescope will use, like "1920x1080": the largest one it can show at 50 Hz or
+# more, or its first mode when the EDID doesn't say. Prints nothing when no display is connected.
 session_preferred_mode() {
   local PATTERN="*"
   [[ -n "$MEDIAHUB_OUTPUT" ]] && PATTERN="$MEDIAHUB_OUTPUT"
@@ -60,7 +126,17 @@ session_preferred_mode() {
   # shellcheck disable=SC2231
   for STATUS in /sys/class/drm/card*-$PATTERN/status; do
     [[ -f "$STATUS" && "$(cat "$STATUS")" == "connected" ]] || continue
-    head -1 "${STATUS%/status}/modes"
+    local DIR="${STATUS%/status}" MODE BEST="" BEST_AREA=0
+    # Only modes the kernel still lists, since it drops the ones the cable or adapter can't carry
+    while read -r MODE; do
+      grep -qx "$MODE" "$DIR/modes" || continue
+      [[ "$MODE" =~ ^([0-9]+)x([0-9]+)$ ]] || continue
+      if (( BASH_REMATCH[1] * BASH_REMATCH[2] > BEST_AREA )); then
+        BEST="$MODE"
+        BEST_AREA=$(( BASH_REMATCH[1] * BASH_REMATCH[2] ))
+      fi
+    done < <(session_edid_fast_modes "$DIR/edid" | sort -u)
+    [[ -n "$BEST" ]] && echo "$BEST" || head -1 "$DIR/modes"
     return 0
   done
 }
@@ -73,8 +149,9 @@ session_gamescope_args() {
     # Output and app resolution match, so apps and the overlay are never scaled
     ARGS+=(-W "$MEDIAHUB_WIDTH" -H "$MEDIAHUB_HEIGHT" -w "$MEDIAHUB_WIDTH" -h "$MEDIAHUB_HEIGHT")
   elif [[ "$(session_preferred_mode)" =~ ^([0-9]+)x([0-9]+) ]]; then
-    # Without -w/-h gamescope gives fullscreen apps 1280x720 and scales them up, so they'd look soft on a 1080p+ TV
-    ARGS+=(-w "${BASH_REMATCH[1]}" -h "${BASH_REMATCH[2]}")
+    # Without -w/-h gamescope gives fullscreen apps 1280x720 and scales them up, so they'd look soft on a 1080p+ TV.
+    # -W/-H pin the output to the same mode, so apps are never rendered at 4K and shrunk to 1080p either.
+    ARGS+=(-W "${BASH_REMATCH[1]}" -H "${BASH_REMATCH[2]}" -w "${BASH_REMATCH[1]}" -h "${BASH_REMATCH[2]}")
   fi
   [[ -n "$MEDIAHUB_REFRESH" ]] && ARGS+=(-r "$MEDIAHUB_REFRESH")
   [[ "$MEDIAHUB_VRR" == "yes" ]] && ARGS+=(--adaptive-sync)
