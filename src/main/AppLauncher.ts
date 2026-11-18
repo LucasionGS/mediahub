@@ -204,7 +204,7 @@ export class AppLauncher extends EventEmitter {
       if (!browser) {
         throw new Error(`${app.name} needs Chromium or Google Chrome, which doesn't seem to be installed. Install one, or set the browser in Settings.`);
       }
-      return [browser, "--kiosk", `--app=${app.url}`, `--user-data-dir=${Paths.profileFor(app.appId)}`, "--no-first-run", "--ozone-platform=x11"];
+      return [browser, "--kiosk", `--app=${app.url}`, `--user-data-dir=${Paths.profileFor(app.appId)}`, "--no-first-run", "--ozone-platform=x11", "--password-store=basic"];
     }
     // Built-in web runner: this same binary in --webapp mode
     const self = electronApp.isPackaged ? [process.execPath] : [process.execPath, electronApp.getAppPath()];

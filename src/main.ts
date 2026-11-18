@@ -15,6 +15,10 @@ declare const MAIN_WINDOW_VITE_NAME: string;
 const webApp = WebAppWindow.parseArgs(process.argv);
 Paths.init();
 
+// Keep cookies off the system keyring. With a locked keyring (autologin, no password typed) Chromium waits for an unlock
+// prompt that never shows inside gamescope, and every page load hangs on a black screen
+app.commandLine.appendSwitch("password-store", "basic");
+
 if (webApp) {
   WebAppWindow.run(webApp);
 }
